@@ -149,22 +149,38 @@ Flash への書き込みはボードを起動不能にしうるので、ライ�
 
 ```sh
 npm install
-npm run dev          # http://localhost:8080/web/
-npm test             # node:test。実機不要
-npm run typecheck    # JSDoc の型を tsc で検査
-npm run lint:layers  # 依存方向と import の健全性
-npm run build        # dist/
-npm run build:site   # site/。Pages が配信するもの
+npm run dev            # http://localhost:8080/web/
+
+npm run check          # CI と同じ検査をまとめて（テスト・型・レイヤ・ロケール）
+npm test               # node:test。実機不要
+npm run test:watch     # 変更を検知して再実行
+npm run test:coverage  # 現在 行カバレッジ 93.6%
+npm run typecheck      # JSDoc の型を tsc で検査
+npm run lint:layers    # 依存方向と import の健全性
+npm run lint:locales   # 訳の欠落と placeholder の不整合
+
+npm run build          # dist/
+npm run build:site     # site/。Pages が配信するもの
+npm run fetch-stub     # flasher stub を取り直す
 ```
 
 テストは `MockTransport` に対して走ります。これは `Uint8Array` を Flash に見立て、本物の SLIP プロトコルで応答する仮想デバイスです。プロトコル層を CI で検証できるのはこのおかげです。
 
 ソースは素の JavaScript です。TypeScript は JSDoc の型検査と、リリース時の `.d.ts` 生成にしか使っておらず、トランスパイルは一切行いません。
 
+テストの書き方、`MockTransport` で再現できること・できないこと、実機での手動テスト項目は[開発ガイド](./docs/development.ja.md)にまとめてあります。
+
 ## ドキュメント
 
-- [仕様書](./docs/spec.ja.md)
-- [配布・公開方法](./docs/publishing.ja.md)
+一覧は [docs/README.md](./docs/README.md) にあります。
+
+| 文書 | 内容 |
+| --- | --- |
+| [spec.ja.md](./docs/spec.ja.md) | 仕様書。設計判断、プロトコル、各フォーマット、安全機構 |
+| [development.ja.md](./docs/development.ja.md) | 開発ガイド。セットアップ、テスト、実機チェックリスト |
+| [ci.ja.md](./docs/ci.ja.md) | GitHub Actions 3 本の説明と必要な設定 |
+| [release.ja.md](./docs/release.ja.md) | バージョニングとリリース手順 |
+| [publishing.ja.md](./docs/publishing.ja.md) | npm / CDN / Pages の構成とその理由 |
 
 ## ライセンス
 

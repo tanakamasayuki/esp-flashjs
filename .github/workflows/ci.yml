@@ -27,7 +27,7 @@ jobs:
         run: npm run lint:layers
 
       - name: Locale key coverage
-        run: node scripts/check-locales.js
+        run: npm run lint:locales
 
       - name: Build
         run: npm run build

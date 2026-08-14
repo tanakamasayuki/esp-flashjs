@@ -178,12 +178,19 @@ take that seriously:
 
 ```sh
 npm install
-npm run dev          # http://localhost:8080/web/
-npm test             # node:test, no hardware needed
-npm run typecheck    # tsc over the JSDoc types
-npm run lint:layers  # dependency direction and import hygiene
-npm run build        # dist/
-npm run build:site   # site/, what Pages serves
+npm run dev            # http://localhost:8080/web/
+
+npm run check          # everything CI runs: tests, types, layers, locales
+npm test               # node:test, no hardware needed
+npm run test:watch     # re-run on change
+npm run test:coverage  # currently 93.6% of lines
+npm run typecheck      # tsc over the JSDoc types
+npm run lint:layers    # dependency direction and import hygiene
+npm run lint:locales   # missing keys and placeholder mismatches
+
+npm run build          # dist/
+npm run build:site     # site/, what Pages serves
+npm run fetch-stub     # refresh the flasher stubs
 ```
 
 Tests run against `MockTransport`, an in-memory device that speaks the real SLIP
@@ -193,10 +200,21 @@ protocol layer testable in CI.
 Sources are plain JavaScript. TypeScript is used only as a checker over JSDoc
 comments and to emit `.d.ts` at release time; nothing is transpiled.
 
+See [the development guide](./docs/development.ja.md) for how to write tests,
+what `MockTransport` can and cannot simulate, and the manual checklist for
+testing against real hardware.
+
 ## Documentation
 
-- [Specification](./docs/spec.ja.md) (Japanese)
-- [Distribution and publishing](./docs/publishing.ja.md) (Japanese)
+Documentation is in Japanese; [docs/README.md](./docs/README.md) is the index.
+
+| Document | Contents |
+| --- | --- |
+| [spec.ja.md](./docs/spec.ja.md) | Specification: design decisions, protocol, formats, safety |
+| [development.ja.md](./docs/development.ja.md) | Setup, testing, hardware checklist |
+| [ci.ja.md](./docs/ci.ja.md) | The three GitHub Actions workflows and their setup |
+| [release.ja.md](./docs/release.ja.md) | Versioning and the release procedure |
+| [publishing.ja.md](./docs/publishing.ja.md) | How npm, CDN and Pages are wired up |
 
 ## License
 

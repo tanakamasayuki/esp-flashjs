@@ -4,7 +4,7 @@
 - ステータス: Phase 1 実装済み。本書は実装に合わせて更新してある
 - 最終更新: 2026-08-14
 
-関連文書: [publishing.ja.md](./publishing.ja.md)（配布・公開方法）
+関連文書: [development.ja.md](./development.ja.md)（開発・テスト） / [ci.ja.md](./ci.ja.md)（GitHub Actions） / [release.ja.md](./release.ja.md)（リリース手順） / [publishing.ja.md](./publishing.ja.md)（配布方法）
 
 ---
 
@@ -1384,12 +1384,18 @@ test/fixtures/
 
 ### 20.4 CI
 
-GitHub Actions で以下を実行する。
+GitHub Actions で以下を実行する。ローカルでは `npm run check` が同じ 4 つをまとめて走らせる。
 
-- `node --test`
-- `tsc --noEmit`（JSDoc 型検査）
-- レイヤ違反チェック（`format/` `binary/` が上位層を import していないことの grep）
-- ロケールのキー欠落チェック
+| 検査 | コマンド |
+| --- | --- |
+| ユニットテスト | `npm test`（`node --test`） |
+| JSDoc 型検査 | `npm run typecheck`（`tsc --noEmit`） |
+| レイヤ違反・import の健全性 | `npm run lint:layers` |
+| ロケールのキー欠落と placeholder 不整合 | `npm run lint:locales` |
+
+これに続けて `npm run build` と `npm run build:site` を実行し、ビルドが通ることまで確認する。
+
+ワークフローの詳細と、初回に必要なリポジトリ設定は [ci.ja.md](./ci.ja.md) を参照。テストの書き方と実機での手動テスト項目は [development.ja.md](./development.ja.md) にある。
 
 ---
 

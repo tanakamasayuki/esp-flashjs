@@ -1,6 +1,6 @@
 # ESP FlashJS 配布・公開方法
 
-本書は ESP FlashJS の配布・公開についての決定を記録する。仕様本体は [spec.ja.md](./spec.ja.md) を参照。
+本書は ESP FlashJS の配布・公開についての**決定と、その理由**を記録する。実際に手を動かす手順は [release.ja.md](./release.ja.md) に、ワークフローの説明は [ci.ja.md](./ci.ja.md) にある。仕様本体は [spec.ja.md](./spec.ja.md)。
 
 ---
 
@@ -82,46 +82,11 @@ export * from './src/index.js';
 
 ### 2.3 ワークフロー
 
-`.github/workflows/pages.yml`:
+`.github/workflows/pages.yml`。検査 → ビルド → `site/` のアップロード → デプロイの順で、CI と同じ検査を先頭に置いている。
 
-```yaml
-name: Deploy to GitHub Pages
-on:
-  push:
-    branches: [main]
-  workflow_dispatch:
+**壊れたページを公開するより、公開が遅れるほうがましである**という判断で、検査を通らなければデプロイしない。
 
-permissions:
-  contents: read
-  pages: write
-  id-token: write
-
-concurrency:
-  group: pages
-  cancel-in-progress: true
-
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: '22' }
-      - run: npm ci
-      - run: npm test
-      - run: npm run typecheck
-      - run: npm run build          # → dist/
-      - run: npm run build:site     # → site/
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: site
-      - id: deployment
-        uses: actions/deploy-pages@v4
-```
+権限・並行制御・初回に必要なリポジトリ設定などの詳細は [ci.ja.md](./ci.ja.md) を参照。
 
 ### 2.4 注意点
 
@@ -140,22 +105,13 @@ jobs:
 
 `file://` では ESM の import と `fetch` が CORS で失敗する。必ず HTTP サーバを立てる。実行時依存ゼロの方針に合わせ、開発サーバも `node:http` だけで書いた `scripts/serve.js` を自前で持つ。
 
-```json
-{
-  "scripts": {
-    "dev": "node scripts/serve.js",
-    "build": "node scripts/build.js",
-    "build:site": "node scripts/build-site.js",
-    "fetch-stub": "node scripts/fetch-stub.js",
-    "test": "node --test",
-    "typecheck": "tsc --noEmit",
-    "types": "tsc --declaration --emitDeclarationOnly --outDir types",
-    "clean": "node -e \"fs.rmSync('dist',{recursive:true,force:true});fs.rmSync('site',{recursive:true,force:true});fs.rmSync('types',{recursive:true,force:true})\""
-  }
-}
+```sh
+npm run dev
 ```
 
-`npm run dev` はリポジトリルートを配信する。この状態で `http://localhost:8080/web/` を開けばアプリが、`http://localhost:8080/examples/` でサンプルが、ビルドなしで動く。
+リポジトリのルートを配信するので、`http://localhost:8080/web/` でアプリが、`http://localhost:8080/examples/` でサンプルが、ビルドなしで動く。**ローカルと Pages で同じソースが同じように動く**のは 2.2 の配置のおかげである。
+
+npm scripts の一覧と使い分けは [development.ja.md](./development.ja.md) にある。
 
 ---
 

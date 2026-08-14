@@ -60,9 +60,15 @@
     "build:site": "node scripts/build-site.js",
     "fetch-stub": "node scripts/fetch-stub.js",
     "test": "node --test \"test/*.test.js\"",
+    "test:watch": "node --test --watch \"test/*.test.js\"",
+    "test:coverage": "node --test --experimental-test-coverage \"test/*.test.js\"",
+    "check": "npm run test && npm run typecheck && npm run lint:layers && npm run lint:locales",
+    "preversion": "npm run check",
+    "version": "node scripts/sync-version.js && git add src/index.js",
     "typecheck": "tsc --noEmit",
     "types": "tsc --declaration --emitDeclarationOnly --noEmit false --outDir types",
     "lint:layers": "node scripts/check-layers.js",
+    "lint:locales": "node scripts/check-locales.js",
     "clean": "node -e \"for (const d of ['dist','site','types']) require('node:fs').rmSync(d,{recursive:true,force:true})\""
   },
   "devDependencies": {
