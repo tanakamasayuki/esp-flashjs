@@ -1,5 +1,7 @@
 # ESP FlashJS 配布・公開方法
 
+[English](./publishing.md) · **日本語**
+
 本書は ESP FlashJS の配布・公開についての**決定と、その理由**を記録する。実際に手を動かす手順は [release.ja.md](./release.ja.md) に、ワークフローの説明は [ci.ja.md](./ci.ja.md) にある。仕様本体は [spec.ja.md](./spec.ja.md)。
 
 ---

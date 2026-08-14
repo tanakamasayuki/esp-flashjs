@@ -2,7 +2,15 @@
 
 **JavaScript toolkit for ESP32 flash analysis, editing and programming.**
 
-[日本語 README](./README.ja.md) · [Live app](https://tanakamasayuki.github.io/esp-flashjs/) · [Examples](https://tanakamasayuki.github.io/esp-flashjs/examples/) · [Spec](./docs/spec.ja.md)
+[日本語 README](./README.ja.md) · [Documentation](./docs/README.md)
+
+### ▶ Try it now: **<https://tanakamasayuki.github.io/esp-flashjs/>**
+
+Open it in Chrome or Edge and connect a board — nothing to install. Without a
+device, drop a `.bin` file in and analyze it offline.
+[Examples](https://tanakamasayuki.github.io/esp-flashjs/examples/)
+
+---
 
 Read, analyze, edit and write back ESP32 flash memory from JavaScript. The
 library has no runtime dependencies and no build step: it is plain ESM that
@@ -37,7 +45,7 @@ loading, flash read/write/erase/verify/dump, partition tables, firmware images,
 OTA data, binary diff and search, plus the reference web app.
 
 NVS analysis and editing (Phase 2) and filesystem support (Phase 3–4) are not
-implemented yet. See [the roadmap](./docs/spec.ja.md#22-ロードマップ).
+implemented yet. See [the roadmap](./docs/spec.md#22-roadmap).
 
 ## Install
 
@@ -200,21 +208,22 @@ protocol layer testable in CI.
 Sources are plain JavaScript. TypeScript is used only as a checker over JSDoc
 comments and to emit `.d.ts` at release time; nothing is transpiled.
 
-See [the development guide](./docs/development.ja.md) for how to write tests,
+See [the development guide](./docs/development.md) for how to write tests,
 what `MockTransport` can and cannot simulate, and the manual checklist for
 testing against real hardware.
 
 ## Documentation
 
-Documentation is in Japanese; [docs/README.md](./docs/README.md) is the index.
+Every document exists in English and Japanese. [docs/README.md](./docs/README.md)
+is the index.
 
 | Document | Contents |
 | --- | --- |
-| [spec.ja.md](./docs/spec.ja.md) | Specification: design decisions, protocol, formats, safety |
-| [development.ja.md](./docs/development.ja.md) | Setup, testing, hardware checklist |
-| [ci.ja.md](./docs/ci.ja.md) | The three GitHub Actions workflows and their setup |
-| [release.ja.md](./docs/release.ja.md) | Versioning and the release procedure |
-| [publishing.ja.md](./docs/publishing.ja.md) | How npm, CDN and Pages are wired up |
+| [spec.md](./docs/spec.md) | Specification: design decisions, protocol, formats, safety |
+| [development.md](./docs/development.md) | Setup, testing, hardware checklist |
+| [ci.md](./docs/ci.md) | The three GitHub Actions workflows and their setup |
+| [release.md](./docs/release.md) | Versioning and the release procedure |
+| [publishing.md](./docs/publishing.md) | How npm, CDN and Pages are wired up |
 
 ## License
 

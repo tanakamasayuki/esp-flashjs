@@ -1,5 +1,7 @@
 # ESP FlashJS 仕様書 v1.0
 
+[English](./spec.md) · **日本語**
+
 - 対象読者: 本リポジトリの実装者
 - ステータス: Phase 1 実装済み。本書は実装に合わせて更新してある
 - 最終更新: 2026-08-14
@@ -208,30 +210,36 @@ esp-flashjs/
 │   ├── components/           # Custom Elements
 │   │   ├── esp-device-panel.js
 │   │   ├── esp-flash-map.js
-│   │   ├── esp-partition-table.js
+│   │   ├── esp-file-list.js
+│   │   ├── esp-inspector.js
 │   │   ├── esp-hex-viewer.js
-│   │   ├── esp-nvs-tree.js
-│   │   ├── esp-nvs-editor.js
-│   │   ├── esp-diff-view.js
+│   │   ├── esp-confirm-dialog.js
 │   │   └── esp-log.js
+│   │                         # Phase 2 で esp-nvs-tree / esp-nvs-editor,
+│   │                         # Phase 3 で esp-diff-view を追加予定
 │   └── styles/
 │       └── app.css
 │
 ├── examples/                 # 単機能の最小サンプル（各 1 HTML ファイル）
 │   ├── index.html            # サンプル一覧
-│   ├── flash-read.html
-│   ├── partition-parser.html
-│   └── nvs-viewer.html
+│   ├── analyze-binary.html   # デバイス不要
+│   ├── partition-parser.html # デバイス不要
+│   └── flash-read.html       # Web Serial
 │
-├── docs/
-│   ├── spec.ja.md            # 本書
-│   └── publishing.ja.md
+├── docs/                     # 英語版と日本語版（.ja.md）を併置
+│   ├── README.md             # 索引
+│   ├── spec.md               # 本書
+│   ├── development.md
+│   ├── ci.md
+│   ├── release.md
+│   └── publishing.md
 │
 ├── test/
-│   ├── *.test.js             # node:test
-│   ├── generate.mjs          # 合成 fixture の生成
-│   └── fixtures/
-│       ├── partitions/ nvs/ firmware/ spiffs/ corrupted/
+│   ├── helpers.js            # fixture ビルダー
+│   ├── binary.test.js        # util/ と binary/
+│   ├── format.test.js        # format/
+│   ├── protocol.test.js      # protocol/ と device/（MockTransport 経由）
+│   └── web.test.js           # web/ の DOM 非依存部分
 │
 ├── scripts/
 │   ├── build.js              # esbuild → dist/
@@ -241,8 +249,11 @@ esp-flashjs/
 │   ├── check-locales.js      # ロケールのキー欠落と placeholder 不整合（CI）
 │   └── serve.js              # ローカル開発用 HTTP サーバ（依存ゼロ）
 │
+├── scripts/
+│   └── sync-version.js       # npm version から VERSION 定数へ同期
+│
 └── .github/workflows/
-    ├── ci.yml                # node --test + tsc --noEmit
+    ├── ci.yml                # 検査 + ビルド
     ├── pages.yml             # GitHub Pages デプロイ
     └── release.yml           # npm publish
 ```
@@ -278,8 +289,6 @@ site/                         # GitHub Pages へアップロードする成果�
 | `examples/` | 最小サンプル | `../src/`。`web/` には依存しない |
 
 `format/` と `binary/` が `transport/` `protocol/` `device/` を import していないことは、`scripts/check-layers.js` が CI で静的に検証する。同スクリプトは拡張子なしの import と、`web-serial.js` 以外での DOM グローバル参照も検出する。
-
-**`testing/` を分けた理由:** `MockTransport` は `Transport` を実装するが、コマンドに応答するにはプロトコルを解釈しなければならない。`transport/` に置くと依存が逆流するため、protocol より上の層として独立させている。
 
 **`testing/` を分けた理由:** `MockTransport` は `Transport` を実装するが、コマンドに応答するにはプロトコルを解釈しなければならない。`transport/` に置くと依存が逆流するため、protocol より上の層として独立させている。
 
@@ -1355,16 +1364,18 @@ Read Original → Store Backup → Modify → Preview Diff → Write → Verify
 
 ### 20.2 fixture
 
-```text
-test/fixtures/
-├── partitions/    正常テーブル、MD5 なし、重複あり、サイズ超過、95 エントリ満載
-├── nvs/           v1 / v2、全 type 網羅、複数ページ、blob 分割、CRC 破損、満杯
-├── firmware/      ESP32/S3/C3 の app image、SHA256 あり/なし、app desc あり/なし
-├── spiffs/        正常、別ジオメトリ、破損
-└── corrupted/     全 0x00、全 0xFF、切り詰め、ランダムバイト列
-```
+**fixture はコードで生成する。** バイナリをコミットするより、その fixture が何を意図しているかが読めることを優先する。`test/helpers.js` にビルダーを置く。
 
-生成できるものは `test/generate.mjs` で生成し、実機由来のものだけをバイナリでコミットする。実機由来 fixture は MAC アドレス等を匿名化する。
+| 関数 | 生成するもの |
+| --- | --- |
+| `singleAppPartitions()` / `otaPartitions()` | パーティション構成（4MB 単一アプリ / デュアル OTA） |
+| `partitionTableBytes(partitions?)` | パーティションテーブルのバイト列 |
+| `espImageBytes(options)` | ファームウェアイメージ。`corruptChecksum` / `appendHash` / `appDesc` を指定可 |
+| `otaDataBytes(sequences)` | otadata。`null` でそのセクタを未書き込みにする |
+| `flashImage(options)` | bootloader + テーブル + アプリを配置した Flash 全体像 |
+| `pathologicalInputs()` | 空 / 1 バイト / 全 0x00 / 全 0xFF / ランダム |
+
+実機から採取したバイナリを追加する場合のみ `test/fixtures/` にコミットし、**MAC アドレス・Wi-Fi 認証情報・証明書・鍵を必ず匿名化する。**
 
 ### 20.3 必須テストケース
 

@@ -1,5 +1,7 @@
 # リリース手順
 
+[English](./release.md) · **日本語**
+
 npm への公開と GitHub Pages の更新。
 
 関連文書: [開発ガイド](./development.ja.md) / [CI](./ci.ja.md) / [配布方法](./publishing.ja.md)

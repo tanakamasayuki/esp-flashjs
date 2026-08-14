@@ -2,7 +2,14 @@
 
 **ESP32 の Flash を、JavaScript とブラウザから解析・編集する。**
 
-[English README](./README.md) · [Web アプリ](https://tanakamasayuki.github.io/esp-flashjs/) · [サンプル](https://tanakamasayuki.github.io/esp-flashjs/examples/) · [仕様書](./docs/spec.ja.md)
+[English README](./README.md) · [ドキュメント](./docs/README.ja.md)
+
+### ▶ すぐ試す: **<https://tanakamasayuki.github.io/esp-flashjs/>**
+
+Chrome か Edge で開いてボードを繋ぐだけです。インストールは要りません。デバイスがなくても、`.bin` を放り込めばオフラインで解析できます。
+[サンプル](https://tanakamasayuki.github.io/esp-flashjs/examples/)
+
+---
 
 ESP32 のフラッシュメモリを JavaScript から読み出し・解析・編集・書き戻しするライブラリです。実行時依存はゼロ、ビルドも不要で、ブラウザと Node.js がそのまま解釈できる素の ESM です。
 
@@ -172,7 +179,7 @@ npm run fetch-stub     # flasher stub を取り直す
 
 ## ドキュメント
 
-一覧は [docs/README.md](./docs/README.md) にあります。
+全文書に英語版があります。一覧は [docs/README.ja.md](./docs/README.ja.md) にあります。
 
 | 文書 | 内容 |
 | --- | --- |

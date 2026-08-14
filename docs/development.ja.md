@@ -1,5 +1,7 @@
 # 開発ガイド
 
+[English](./development.md) · **日本語**
+
 ESP FlashJS の開発手順・テストの書き方・ローカル検証の方法。
 
 関連文書: [仕様書](./spec.ja.md) / [CI](./ci.ja.md) / [リリース手順](./release.ja.md) / [配布方法](./publishing.ja.md)

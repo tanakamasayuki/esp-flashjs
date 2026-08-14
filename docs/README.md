@@ -1,26 +1,41 @@
-# ドキュメント
+# Documentation
 
-| 文書 | 内容 | 主な読み手 |
+**English** · [日本語](./README.ja.md)
+
+| Document | Contents | Audience |
 | --- | --- | --- |
-| [spec.ja.md](./spec.ja.md) | 仕様書。設計判断、プロトコル、各フォーマットの構造、安全機構 | 実装者 |
-| [development.ja.md](./development.ja.md) | 開発ガイド。セットアップ、テストの書き方と走らせ方、実機での手動テスト | コントリビュータ |
-| [ci.ja.md](./ci.ja.md) | GitHub Actions の説明。3 本のワークフロー、必要な設定、失敗時の読み方 | コントリビュータ、メンテナ |
-| [release.ja.md](./release.ja.md) | リリース手順。バージョニング、npm 公開、間違えたときの対処 | メンテナ |
-| [publishing.ja.md](./publishing.ja.md) | 配布方法の決定。npm / CDN / Pages の構成と、その理由 | メンテナ |
+| [spec.md](./spec.md) | Specification: design decisions, protocol, format layouts, safety | Implementers |
+| [development.md](./development.md) | Setup, how to write and run tests, manual hardware checklist | Contributors |
+| [ci.md](./ci.md) | The three GitHub Actions workflows, required setup, reading failures | Contributors, maintainers |
+| [release.md](./release.md) | Versioning, the release procedure, recovering from mistakes | Maintainers |
+| [publishing.md](./publishing.md) | How npm, CDN and Pages are wired up, and why | Maintainers |
 
-## どこから読むか
+Every document has a Japanese counterpart with the `.ja.md` suffix, linked from
+the top of each page.
 
-**使いたいだけ** — [README](../README.ja.md) で足ります。
+The published web app: <https://tanakamasayuki.github.io/esp-flashjs/>
 
-**手を入れたい** — [development.ja.md](./development.ja.md) → [spec.ja.md](./spec.ja.md) の関係する章。
+## Where to start
 
-**なぜこうなっているのか知りたい** — [spec.ja.md の §3「主要な設計判断」](./spec.ja.md#3-主要な設計判断)に、判断とその理由を並べてあります。
+**Just using the library** — the [README](../README.md) is enough.
 
-**リリースする** — [release.ja.md](./release.ja.md)。
+**Making changes** — [development.md](./development.md), then the relevant
+chapter of [spec.md](./spec.md).
 
-## 前提として知っておくとよいこと
+**Wondering why something is the way it is** —
+[spec.md §3, "Key design decisions"](./spec.md#3-key-design-decisions) lists each
+decision alongside its reason.
 
-実装で一番効いている制約は 2 つです。
+**Cutting a release** — [release.md](./release.md).
 
-1. **ROM ブートローダは Flash を読めない。** `READ_FLASH` / `ERASE_FLASH` / `ERASE_REGION` を実装していないため、読み出し系はすべて flasher stub のロードが前提になります（[spec §6.4](./spec.ja.md#64-stub-loader)）。
-2. **ライブラリはユーザー向けの文言を持たない。** 安定した `code` と `params` だけを返し、翻訳は `web/locales/` の責務です（[spec §16.8](./spec.ja.md#168-i18n)）。これがあるので、ライブラリを組み込む第三者アプリが自前の文言体系を使えます。
+## Two constraints worth knowing up front
+
+More of this codebase follows from these two than from anything else.
+
+1. **The ROM bootloader cannot read flash.** It implements no `READ_FLASH`,
+   `ERASE_FLASH` or `ERASE_REGION`, so every read path depends on the flasher
+   stub being uploaded first ([spec §6.4](./spec.md#64-the-flasher-stub)).
+2. **The library holds no user-facing prose.** It returns stable `code` values
+   and parameters; translation belongs to `web/locales/`
+   ([spec §16.8](./spec.md#168-internationalization)). That separation is what
+   lets a third-party app embed the library and keep its own wording.
