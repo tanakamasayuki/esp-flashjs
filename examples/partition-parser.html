@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Partition table parser — ESP FlashJS</title>
+    <style>
+      body { font-family: system-ui, sans-serif; max-width: 60rem; margin: 2rem auto; padding: 0 1rem; line-height: 1.6; }
+      table { border-collapse: collapse; width: 100%; margin-top: 1rem; }
+      th, td { text-align: left; padding: 4px 10px; border-bottom: 1px solid #ddd; }
+      code, td.n { font-family: ui-monospace, monospace; }
+      .issue { color: #b45309; }
+      .issue.error { color: #dc2626; }
+    </style>
+  </head>
+  <body>
+    <h1>Partition table parser</h1>
+    <p>
+      Parses a <code>partition-table.bin</code>, or a full flash dump, entirely in the browser.
+      No device and no upload: the file never leaves this page.
+    </p>
+
+    <input type="file" id="file" accept=".bin" />
+    <div id="output"></div>
+
+    <script type="module">
+      // A dependency-free ESM import straight from source. In your own page,
+      // point this at a CDN build instead:
+      //   import { ... } from 'https://cdn.jsdelivr.net/npm/esp-flashjs@0.1.0/dist/esp-flashjs.core.min.js';
+      import {
+        parsePartitionTable,
+        validatePartitionTable,
+        formatByteSize,
+        toHexAddress,
+        PARTITION_TABLE_OFFSET,
+      } from '../src/core.js';
+
+      const output = document.getElementById('output');
+
+      document.getElementById('file').addEventListener('change', async (event) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        // A whole-flash dump keeps the table at its usual offset; a table on
+        // its own starts at zero.
+        const offset = bytes.length > PARTITION_TABLE_OFFSET ? PARTITION_TABLE_OFFSET : 0;
+
+        try {
+          const table = parsePartitionTable(bytes, { offset });
+          const issues = [
+            ...table.issues,
+            ...validatePartitionTable(table, { flashSize: bytes.length > 0x10000 ? bytes.length : null }),
+          ];
+          render(table, issues);
+        } catch (error) {
+          output.innerHTML = `<p class="issue error">${error.message}</p>`;
+        }
+      });
+
+      function render(table, issues) {
+        const rows = table.partitions
+          .map(
+            (p) => `<tr>
+              <td>${p.label}</td>
+              <td>${p.typeName}</td>
+              <td>${p.subtypeName}</td>
+              <td class="n">${toHexAddress(p.offset)}</td>
+              <td class="n">${formatByteSize(p.size)}</td>
+              <td class="n">${toHexAddress(p.offset + p.size)}</td>
+              <td>${p.encrypted ? 'yes' : ''}</td>
+            </tr>`,
+          )
+          .join('');
+
+        output.innerHTML = `
+          <p>MD5: ${table.hasMd5 ? (table.md5Valid ? 'valid' : 'MISMATCH') : 'absent'}</p>
+          <table>
+            <tr><th>Label</th><th>Type</th><th>Subtype</th><th>Offset</th><th>Size</th><th>End</th><th>Enc</th></tr>
+            ${rows}
+          </table>
+          ${issues
+            .map((i) => `<p class="issue ${i.level}">${i.level}: ${i.code} ${JSON.stringify(i.params ?? {})}</p>`)
+            .join('')}
+        `;
+      }
+    </script>
+  </body>
+</html>

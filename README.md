@@ -1,0 +1,209 @@
+# ESP FlashJS
+
+**JavaScript toolkit for ESP32 flash analysis, editing and programming.**
+
+[日本語 README](./README.ja.md) · [Live app](https://tanakamasayuki.github.io/esp-flashjs/) · [Examples](https://tanakamasayuki.github.io/esp-flashjs/examples/) · [Spec](./docs/spec.ja.md)
+
+Read, analyze, edit and write back ESP32 flash memory from JavaScript. The
+library has no runtime dependencies and no build step: it is plain ESM that
+browsers and Node.js run as-is.
+
+```js
+import { parsePartitionTable } from 'https://cdn.jsdelivr.net/npm/esp-flashjs@0.1.0/dist/esp-flashjs.core.min.js';
+
+const table = parsePartitionTable(bytes);
+console.log(table.partitions);
+```
+
+---
+
+## Three ideas
+
+**Library first.** Every parser and builder works without a UI. The web app is
+a consumer of the same public API you get from npm — nothing is reachable from
+the GUI that is not reachable from code.
+
+**Binary first.** You do not need hardware. Drop a `flash.bin`, `nvs.bin` or
+firmware image into the page and analyze it offline. Data read from a device and
+data read from a file go through the same code path.
+
+**Buildless.** The sources are ES2022 modules with JSDoc types. `dist/` bundles
+exist for convenience, not because anything requires them.
+
+## Status
+
+Phase 1 is implemented: transport, bootloader protocol, chip detection, stub
+loading, flash read/write/erase/verify/dump, partition tables, firmware images,
+OTA data, binary diff and search, plus the reference web app.
+
+NVS analysis and editing (Phase 2) and filesystem support (Phase 3–4) are not
+implemented yet. See [the roadmap](./docs/spec.ja.md#22-ロードマップ).
+
+## Install
+
+```sh
+npm install esp-flashjs
+```
+
+```js
+// Everything, including Web Serial.
+import { EspFlash, EspLoader, WebSerialTransport } from 'esp-flashjs';
+
+// Parsers and binary utilities only — no serial code, smaller, runs in Node.
+import { parsePartitionTable, analyzeBinary } from 'esp-flashjs/core';
+```
+
+Or from a CDN, with no install at all:
+
+```html
+<script type="module">
+  import { analyzeBinary } from 'https://cdn.jsdelivr.net/npm/esp-flashjs@0.1.0/dist/esp-flashjs.min.js';
+</script>
+```
+
+Pin the version. Unpinned CDN URLs break other people's pages when a major
+release lands.
+
+## Usage
+
+### Analyze a file, no device
+
+```js
+import { analyzeBinary, parsePartitionTable } from 'esp-flashjs/core';
+
+const result = analyzeBinary(bytes);
+console.log(result.type);        // 'partition-table' | 'esp-image' | 'otadata' | 'raw' | 'encrypted?'
+console.log(result.confidence);  // 0.0 – 1.0
+console.log(result.regions);     // byte ranges, for highlighting in a hex view
+console.log(result.issues);      // problems found, as stable codes
+```
+
+Analysis never throws on damaged input. Problems are reported through `issues`
+and the recoverable parts are still returned, because a corrupted image is
+usually the one you most want to look at.
+
+### Talk to a device
+
+```js
+import { EspFlash, EspLoader, WebSerialTransport } from 'esp-flashjs';
+
+// Must be inside a click handler: the browser only opens the port picker
+// during a user gesture.
+const transport = await WebSerialTransport.request();
+const loader = new EspLoader(transport);
+
+await loader.connect();      // reset → sync → identify the chip
+await loader.loadStub();     // returns false on failure; the session stays usable
+
+const flash = new EspFlash(loader);
+const info = await flash.getInfo();
+
+const table = await flash.read(0x8000, 0xc00, {
+  onProgress: ({ done, total }) => console.log(done, '/', total),
+});
+
+await loader.disconnect();
+```
+
+### The stub is not optional for reading
+
+The ESP32 ROM bootloader implements no `READ_FLASH`, `ERASE_FLASH` or
+`ERASE_REGION` command. Reading flash, dumping, reading a partition and
+everything built on top require the flasher stub to be uploaded into RAM first.
+
+`loadStub()` returns `false` instead of throwing when that fails, so writing
+still works and the app can degrade rather than die. `flash.read()` then throws
+`UnsupportedOperationError` with `code === 'REQUIRES_STUB'`.
+
+### Errors carry codes, not sentences
+
+```js
+try {
+  await flash.read(0, 1024);
+} catch (error) {
+  if (error.code === 'REQUIRES_STUB') { /* … */ }
+}
+```
+
+Every error has a stable `code` and a `details` object. `message` is English
+and meant for developers. The library never produces user-facing prose — that
+is the application's job, which is what makes the reference app translatable
+without patching the library.
+
+## Chip support
+
+Chip definitions cover the current ESP32 family. Verification on real hardware
+is another matter, and the table says which is which rather than implying they
+are the same thing.
+
+| Chip | Detection | Tested on hardware |
+| --- | --- | --- |
+| ESP32 | magic register | not yet |
+| ESP32-S2 | magic register | not yet |
+| ESP32-S3 | chip id | not yet |
+| ESP32-C2 | chip id | not yet |
+| ESP32-C3 | chip id | not yet |
+| ESP32-C5 | chip id | not yet |
+| ESP32-C6 | chip id | not yet |
+| ESP32-C61 | chip id | not yet |
+| ESP32-H2 | chip id | not yet |
+| ESP32-P4 | chip id | not yet |
+
+ESP8266 is out of scope: the protocol overlaps, but partition tables and image
+formats do not.
+
+## Browser support
+
+Web Serial is required to reach a device, and needs a secure context. That means
+Chrome, Edge and other Chromium-based **desktop** browsers, over HTTPS or
+`http://localhost`.
+
+Firefox and Safari can still import files and analyze them offline. The app
+detects this and disables only the connection controls.
+
+## Safety
+
+Writing flash can leave a board unable to boot, so the library and the app both
+take that seriously:
+
+- Reads, exports and analysis are separated from writes and erases in the UI.
+- Writes back up the target region first, and abort if the backup fails.
+- Destructive operations require typing the partition label, not ticking a box.
+- Misaligned or out-of-range operations throw rather than being rounded or
+  truncated to something plausible.
+- Encrypted regions are labelled as such and never presented as decoded.
+  Decryption is out of scope and will not be implemented.
+
+## Development
+
+```sh
+npm install
+npm run dev          # http://localhost:8080/web/
+npm test             # node:test, no hardware needed
+npm run typecheck    # tsc over the JSDoc types
+npm run lint:layers  # dependency direction and import hygiene
+npm run build        # dist/
+npm run build:site   # site/, what Pages serves
+```
+
+Tests run against `MockTransport`, an in-memory device that speaks the real SLIP
+protocol against a `Uint8Array` standing in for flash. That is what makes the
+protocol layer testable in CI.
+
+Sources are plain JavaScript. TypeScript is used only as a checker over JSDoc
+comments and to emit `.d.ts` at release time; nothing is transpiled.
+
+## Documentation
+
+- [Specification](./docs/spec.ja.md) (Japanese)
+- [Distribution and publishing](./docs/publishing.ja.md) (Japanese)
+
+## License
+
+MIT. See [LICENSE](./LICENSE).
+
+Bundled flasher stubs come from
+[espressif/esp-flasher-stub](https://github.com/espressif/esp-flasher-stub) and
+are dual licensed Apache-2.0 OR MIT; see [NOTICE](./NOTICE).
+
+ESP FlashJS is not an official Espressif Systems project.

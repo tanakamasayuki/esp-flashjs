@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Read flash — ESP FlashJS</title>
+    <style>
+      body { font-family: system-ui, sans-serif; max-width: 60rem; margin: 2rem auto; padding: 0 1rem; line-height: 1.6; }
+      button { padding: 6px 14px; font: inherit; }
+      pre { background: #f4f5f7; padding: 10px; overflow: auto; font-size: 12px; }
+      dl { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; }
+      dt { color: #666; }
+      dd { margin: 0; font-family: ui-monospace, monospace; }
+      .warn { color: #b45309; }
+    </style>
+  </head>
+  <body>
+    <h1>Read flash</h1>
+    <p>
+      Connects over Web Serial, loads the flasher stub, and reads the partition table.
+      Requires Chrome, Edge or another Chromium-based desktop browser.
+    </p>
+    <p class="warn" id="support" hidden>Web Serial is not available in this browser.</p>
+
+    <button id="connect">Connect</button>
+    <div id="info"></div>
+    <pre id="dump"></pre>
+
+    <script type="module">
+      import {
+        EspFlash,
+        EspLoader,
+        WebSerialTransport,
+        hexDump,
+        formatByteSize,
+        PARTITION_TABLE_OFFSET,
+        PARTITION_TABLE_SIZE,
+        parsePartitionTable,
+      } from '../src/index.js';
+
+      const info = document.getElementById('info');
+      const dump = document.getElementById('dump');
+
+      if (!WebSerialTransport.isSupported()) {
+        document.getElementById('support').hidden = false;
+        document.getElementById('connect').disabled = true;
+      }
+
+      document.getElementById('connect').addEventListener('click', async () => {
+        try {
+          // requestPort() must run inside the click handler; browsers reject it
+          // outside a user gesture.
+          const transport = await WebSerialTransport.request();
+          const loader = new EspLoader(transport, {
+            onLog: (level, code, params) => console.log(level, code, params ?? ''),
+          });
+
+          await loader.connect();
+          const stubLoaded = await loader.loadStub();
+
+          const flash = new EspFlash(loader);
+          const device = await flash.getInfo();
+
+          info.innerHTML = `<dl>
+            <dt>Chip</dt><dd>${device.chip}</dd>
+            <dt>MAC</dt><dd>${device.mac}</dd>
+            <dt>Flash</dt><dd>${device.flashSize === null ? 'unknown' : formatByteSize(device.flashSize)}</dd>
+            <dt>Mode</dt><dd>${stubLoaded ? 'stub' : 'ROM'}</dd>
+          </dl>`;
+
+          if (!stubLoaded) {
+            dump.textContent =
+              'The ROM loader cannot read flash. Reading needs the stub, which failed to load.';
+            await loader.disconnect();
+            return;
+          }
+
+          const bytes = await flash.read(PARTITION_TABLE_OFFSET, PARTITION_TABLE_SIZE);
+          const table = parsePartitionTable(bytes);
+          dump.textContent =
+            table.partitions
+              .map((p) => `${p.label.padEnd(12)} ${p.typeName}/${p.subtypeName}`.padEnd(34) +
+                          `0x${p.offset.toString(16)}  ${formatByteSize(p.size)}`)
+              .join('\n') +
+            '\n\n' +
+            hexDump(bytes.subarray(0, 256), { baseAddress: PARTITION_TABLE_OFFSET });
+
+          await loader.disconnect();
+        } catch (error) {
+          dump.textContent = `${error.code ?? error.name}: ${error.message}`;
+        }
+      });
+    </script>
+  </body>
+</html>

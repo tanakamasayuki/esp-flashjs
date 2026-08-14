@@ -1,0 +1,283 @@
+/* ESP FlashJS — application shell.
+ *
+ * Components carry their own styles inside shadow roots; this file defines the
+ * layout and the design tokens they inherit through CSS custom properties.
+ */
+
+:root {
+  --sans: system-ui, -apple-system, "Segoe UI", "Noto Sans JP", "Noto Sans SC", sans-serif;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+
+  --bg: #ffffff;
+  --bg-panel: #f7f8fa;
+  --bg-input: #ffffff;
+  --bg-button: #eef0f4;
+  --bg-button-hover: #e3e6ec;
+  --bg-row-alt: #00000006;
+
+  --fg: #1a1d23;
+  --fg-dim: #4a5060;
+  --fg-muted: #767d8c;
+  --border: #d8dce4;
+
+  --accent: #2563eb;
+  --accent-fg: #ffffff;
+  --accent-soft: #bfdbfe;
+  --select: #2563eb;
+  --select-fg: #ffffff;
+
+  --ok: #15803d;
+  --warn: #b45309;
+  --danger: #dc2626;
+
+  --map-app: #2563eb;
+  --map-nvs: #7c3aed;
+  --map-ota: #0891b2;
+  --map-fs: #15803d;
+  --map-data: #64748b;
+  --map-gap: #b0b7c3;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14161a;
+    --bg-panel: #1b1e24;
+    --bg-input: #22262e;
+    --bg-button: #272b34;
+    --bg-button-hover: #323742;
+    --bg-row-alt: #ffffff08;
+
+    --fg: #e6e9ef;
+    --fg-dim: #b3b9c5;
+    --fg-muted: #8b93a3;
+    --border: #333944;
+
+    --accent: #4f8cf7;
+    --accent-fg: #0c1016;
+    --accent-soft: #1e3a68;
+    --select: #4f8cf7;
+    --select-fg: #0c1016;
+
+    --ok: #4ade80;
+    --warn: #fbbf24;
+    --danger: #f87171;
+
+    --map-app: #4f8cf7;
+    --map-nvs: #a78bfa;
+    --map-ota: #22d3ee;
+    --map-fs: #4ade80;
+    --map-data: #94a3b8;
+    --map-gap: #4b5563;
+  }
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  display: grid;
+  grid-template-rows: auto auto 1fr auto;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.5;
+  overflow: hidden;
+}
+
+/* Avoid a flash of untranslated keys before i18n resolves. */
+body:not([data-ready]) main,
+body:not([data-ready]) .topbar { visibility: hidden; }
+
+/* Top bar ------------------------------------------------------------- */
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-panel);
+}
+
+.topbar h1 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.topbar .tagline {
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+
+.topbar .spacer { flex: 1; }
+
+.topbar a {
+  color: var(--fg-muted);
+  text-decoration: none;
+  font-size: 12px;
+}
+.topbar a:hover { color: var(--fg); text-decoration: underline; }
+
+#version { color: var(--fg-muted); font-size: 11px; font-family: var(--mono); }
+
+select {
+  background: var(--bg-input);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 4px 6px;
+  font: inherit;
+  font-size: 12px;
+}
+
+/* Device strip -------------------------------------------------------- */
+
+.device-strip {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  max-height: 30vh;
+  overflow: auto;
+}
+
+/* Main layout --------------------------------------------------------- */
+
+main {
+  display: grid;
+  grid-template-columns: minmax(240px, 320px) 1fr;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.pane {
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.pane-left {
+  border-right: 1px solid var(--border);
+  padding: 12px;
+  gap: 18px;
+}
+
+.pane-right { overflow: hidden; }
+
+section h2 {
+  margin: 0 0 8px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--fg-muted);
+}
+
+.section-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.section-actions button {
+  background: var(--bg-button);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 4px 10px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.section-actions button:hover:not(:disabled) { background: var(--bg-button-hover); }
+.section-actions button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* Progress ------------------------------------------------------------ */
+
+#progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 14px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-panel);
+  font-size: 12px;
+}
+
+#progress[hidden] { display: none; }
+
+.progress-track {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--bg-button);
+  overflow: hidden;
+}
+
+#progress-fill {
+  height: 100%;
+  width: 0;
+  background: var(--accent);
+  transition: width 120ms linear;
+}
+
+#progress-cancel {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--fg-muted);
+  padding: 2px 8px;
+  font: inherit;
+  cursor: pointer;
+}
+
+/* Log ----------------------------------------------------------------- */
+
+.log-pane {
+  border-top: 1px solid var(--border);
+  height: 150px;
+  background: var(--bg-panel);
+}
+
+/* Pane tabs (narrow screens only) ------------------------------------- */
+
+#pane-tabs { display: none; }
+
+@media (max-width: 900px) {
+  main { grid-template-columns: 1fr; }
+
+  #pane-tabs {
+    display: flex;
+    gap: 2px;
+    padding: 0 14px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-panel);
+  }
+
+  #pane-tabs button {
+    background: none;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    padding: 8px 12px;
+    font: inherit;
+    font-size: 13px;
+    color: var(--fg-muted);
+    cursor: pointer;
+  }
+  #pane-tabs button[aria-selected="true"] {
+    color: var(--fg);
+    border-bottom-color: var(--accent);
+  }
+
+  body:not([data-pane="right"]) .pane-right { display: none; }
+  body[data-pane="right"] .pane-left { display: none; }
+
+  .log-pane { height: 110px; }
+}

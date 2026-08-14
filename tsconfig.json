@@ -1,0 +1,19 @@
+{
+  "//": "Type checking and .d.ts generation only. Sources are plain JavaScript and are never transpiled.",
+  "compilerOptions": {
+    "target": "es2022",
+    "lib": ["es2022", "dom", "dom.iterable"],
+    "types": ["w3c-web-serial"],
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "allowJs": true,
+    "checkJs": true,
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "noImplicitOverride": true,
+    "exactOptionalPropertyTypes": false,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": ["src/**/*.js", "web/**/*.js"]
+}

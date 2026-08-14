@@ -177,12 +177,14 @@ full と core の 2 系統を出す。オフライン解析しかしない利用
 
 ```text
 dist/
-├── esp-flashjs.js            full  ESM 非圧縮
-├── esp-flashjs.min.js        full  ESM 圧縮
-├── esp-flashjs.core.js       core  ESM 非圧縮
-├── esp-flashjs.core.min.js   core  ESM 圧縮
-└── stub/*.json               実行時 fetch 用（バンドルには埋め込まない）
+├── esp-flashjs.js            full  ESM 非圧縮   107 KB
+├── esp-flashjs.min.js        full  ESM 圧縮      52 KB
+├── esp-flashjs.core.js       core  ESM 非圧縮    53 KB
+├── esp-flashjs.core.min.js   core  ESM 圧縮      28 KB
+└── stub/*.json               実行時 fetch 用    132 KB（バンドルには埋め込まない）
 ```
+
+（サイズは v0.1.0 実測値）
 
 | | full | core |
 | --- | --- | --- |

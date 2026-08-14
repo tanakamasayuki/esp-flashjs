@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ESP FlashJS</title>
+    <meta
+      name="description"
+      content="Inspect, analyze and modify ESP32 flash directly from your browser."
+    />
+    <!-- Every path here is relative: the site is served from a subdirectory. -->
+    <link rel="stylesheet" href="./styles/app.css" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%232563eb'/%3E%3Cpath d='M9 2 4 9h3l-1 5 5-7H8z' fill='%23fff'/%3E%3C/svg%3E" />
+  </head>
+  <body>
+    <header class="topbar">
+      <h1 data-i18n="app.title">ESP FlashJS</h1>
+      <span id="version"></span>
+      <span class="tagline" data-i18n="app.tagline"></span>
+      <span class="spacer"></span>
+      <label for="language" class="tagline" data-i18n="app.language"></label>
+      <select id="language" aria-label="Language"></select>
+      <a
+        href="https://github.com/tanakamasayuki/esp-flashjs/tree/main/docs"
+        data-i18n="app.docs"
+      ></a>
+      <!-- Resolved by app.js: this file sits at web/ in the repository and at
+           the root of the published site, so the depth differs. -->
+      <a id="examples-link" href="../examples/" data-i18n="app.examples"></a>
+      <a href="https://github.com/tanakamasayuki/esp-flashjs" data-i18n="app.repository"></a>
+    </header>
+
+    <div class="device-strip">
+      <esp-device-panel></esp-device-panel>
+    </div>
+
+    <nav id="pane-tabs" role="tablist">
+      <button type="button" role="tab" aria-selected="true" data-pane="left" data-i18n="flash.map"></button>
+      <button type="button" role="tab" aria-selected="false" data-pane="right" data-i18n="inspector.section"></button>
+    </nav>
+
+    <main>
+      <div class="pane pane-left">
+        <section>
+          <h2 data-i18n="flash.section"></h2>
+          <div class="section-actions">
+            <button type="button" id="read-table" data-i18n="flash.readPartitionTable"></button>
+            <button type="button" id="dump" data-i18n="flash.dump"></button>
+          </div>
+          <esp-flash-map></esp-flash-map>
+        </section>
+
+        <section>
+          <h2 data-i18n="files.section"></h2>
+          <esp-file-list></esp-file-list>
+        </section>
+      </div>
+
+      <div class="pane pane-right">
+        <esp-inspector></esp-inspector>
+      </div>
+    </main>
+
+    <div id="progress" hidden>
+      <span id="progress-label"></span>
+      <div class="progress-track"><div id="progress-fill"></div></div>
+      <button type="button" id="progress-cancel"></button>
+    </div>
+
+    <div class="log-pane">
+      <esp-log></esp-log>
+    </div>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

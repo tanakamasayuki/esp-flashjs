@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Type check (JSDoc)
+        run: npm run typecheck
+
+      - name: Layer boundaries and import hygiene
+        run: npm run lint:layers
+
+      - name: Locale key coverage
+        run: node scripts/check-locales.js
+
+      - name: Build
+        run: npm run build
+
+      - name: Assemble site
+        run: npm run build:site

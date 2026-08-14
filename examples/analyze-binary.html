@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Analyze a binary — ESP FlashJS</title>
+    <style>
+      body { font-family: system-ui, sans-serif; max-width: 60rem; margin: 2rem auto; padding: 0 1rem; line-height: 1.6; }
+      pre { background: #f4f5f7; padding: 10px; overflow: auto; font-size: 12px; }
+      .drop { border: 2px dashed #bbb; border-radius: 8px; padding: 2rem; text-align: center; color: #666; }
+      .drop.over { border-color: #2563eb; background: #eff6ff; }
+      table { border-collapse: collapse; margin-top: 1rem; }
+      th, td { text-align: left; padding: 3px 10px; border-bottom: 1px solid #ddd; font-size: 13px; }
+    </style>
+  </head>
+  <body>
+    <h1>Analyze a binary</h1>
+    <p>
+      Drop any ESP-related binary here. The format is detected automatically:
+      partition tables, firmware images and OTA data are recognized, and
+      anything else is reported as raw — including a note when the contents
+      look encrypted.
+    </p>
+
+    <div class="drop" id="drop">Drop a .bin file here, or click to choose one</div>
+    <input type="file" id="file" hidden />
+    <div id="result"></div>
+
+    <script type="module">
+      import { analyzeBinary, detectFormat, entropy, formatByteSize } from '../src/core.js';
+
+      const drop = document.getElementById('drop');
+      const picker = document.getElementById('file');
+      const result = document.getElementById('result');
+
+      drop.addEventListener('click', () => picker.click());
+      picker.addEventListener('change', () => handle(picker.files?.[0]));
+
+      drop.addEventListener('dragover', (event) => {
+        event.preventDefault();
+        drop.classList.add('over');
+      });
+      drop.addEventListener('dragleave', () => drop.classList.remove('over'));
+      drop.addEventListener('drop', (event) => {
+        event.preventDefault();
+        drop.classList.remove('over');
+        handle(event.dataTransfer?.files?.[0]);
+      });
+
+      async function handle(file) {
+        if (!file) return;
+        const bytes = new Uint8Array(await file.arrayBuffer());
+
+        const candidates = detectFormat(bytes);
+        const analysis = analyzeBinary(bytes);
+
+        result.innerHTML = `
+          <h2>${file.name} — ${formatByteSize(bytes.length)}</h2>
+          <p>Detected as <strong>${analysis.type}</strong>
+             (confidence ${Math.round(analysis.confidence * 100)}%,
+              entropy ${entropy(bytes.subarray(0, 65536)).toFixed(2)} bits/byte)</p>
+          ${candidates.length ? `<table><tr><th>Candidate</th><th>Confidence</th><th>Reason</th></tr>
+            ${candidates.map((c) => `<tr><td>${c.name}</td><td>${c.confidence}</td><td>${c.reasonCode ?? ''}</td></tr>`).join('')}
+          </table>` : ''}
+          <h3>Metadata</h3>
+          <pre>${JSON.stringify(analysis.metadata, null, 2)}</pre>
+          ${analysis.regions.length ? `<h3>Regions</h3><pre>${analysis.regions
+            .map((r) => `0x${r.offset.toString(16).padStart(6, '0')}  ${String(r.length).padStart(8)}  ${r.kind.padEnd(8)} ${r.label}`)
+            .join('\n')}</pre>` : ''}
+          ${analysis.issues.length ? `<h3>Issues</h3><pre>${analysis.issues
+            .map((i) => `${i.level}: ${i.code} ${JSON.stringify(i.params ?? {})}`)
+            .join('\n')}</pre>` : ''}
+        `;
+      }
+    </script>
+  </body>
+</html>

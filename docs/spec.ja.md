@@ -1,7 +1,7 @@
 # ESP FlashJS 仕様書 v1.0
 
 - 対象読者: 本リポジトリの実装者
-- ステータス: ドラフト（実装着手前）
+- ステータス: Phase 1 実装済み。本書は実装に合わせて更新してある
 - 最終更新: 2026-08-14
 
 関連文書: [publishing.ja.md](./publishing.ja.md)（配布・公開方法）
@@ -69,7 +69,7 @@ Device → Flash → Partition → Data Structure → Edit → Rebuild → Write
 
 ### 2.3 対象チップ
 
-現行の主要チップを全て対象とする。
+現行の主要チップを全て対象とする。stub JSON は全チップ分を同梱する（合計 132KB。バンドルには埋め込まず実行時 fetch するため、解析しか使わない利用者には転送されない）。
 
 ```text
 ESP32  /  ESP32-S2  /  ESP32-S3
@@ -156,8 +156,11 @@ esp-flashjs/
 │   │
 │   ├── transport/
 │   │   ├── transport.js      # 抽象基底 + JSDoc typedef
-│   │   ├── web-serial.js     # WebSerialTransport
-│   │   └── mock.js           # MockTransport（テスト用）
+│   │   └── web-serial.js     # WebSerialTransport
+│   │
+│   ├── testing/
+│   │   └── mock-transport.js # 仮想デバイス。Transport だがプロトコルを話すため
+│   │                         # transport/ ではなくここに置く（4.3 参照）
 │   │
 │   ├── protocol/
 │   │   ├── slip.js           # SLIP エンコード / デコード
@@ -234,7 +237,9 @@ esp-flashjs/
 │   ├── build.js              # esbuild → dist/
 │   ├── build-site.js         # → site/（GitHub Pages 用）
 │   ├── fetch-stub.js         # stub JSON をリリースから取得
-│   └── serve.js              # ローカル開発用 HTTP サーバ
+│   ├── check-layers.js       # 依存方向と import の健全性（CI）
+│   ├── check-locales.js      # ロケールのキー欠落と placeholder 不整合（CI）
+│   └── serve.js              # ローカル開発用 HTTP サーバ（依存ゼロ）
 │
 └── .github/workflows/
     ├── ci.yml                # node --test + tsc --noEmit
@@ -267,11 +272,16 @@ site/                         # GitHub Pages へアップロードする成果�
 | `src/format/` | 各フォーマットの parse / build。**純粋関数のみ** | `binary/`, `util/` |
 | `src/transport/` | I/O 抽象と実装 | `util/` |
 | `src/protocol/` | SLIP・コマンド・チップ定義・stub | `transport/`, `binary/`, `util/` |
-| `src/device/` | Flash 操作のユースケース | `protocol/`, `binary/`, `util/` |
+| `src/device/` | Flash 操作のユースケース | `protocol/`, `binary/`, `format/`, `util/` |
+| `src/testing/` | 仮想デバイス | `protocol/`, `transport/`, `binary/`, `format/`, `util/` |
 | `web/` | UI。Core API の consumer | `./esp-flashjs.js` のみを通じて `src/` |
 | `examples/` | 最小サンプル | `../src/`。`web/` には依存しない |
 
-`format/` と `binary/` が `transport/` `protocol/` `device/` を import していないことは、CI で静的にチェックする（import 文の grep で足りる）。
+`format/` と `binary/` が `transport/` `protocol/` `device/` を import していないことは、`scripts/check-layers.js` が CI で静的に検証する。同スクリプトは拡張子なしの import と、`web-serial.js` 以外での DOM グローバル参照も検出する。
+
+**`testing/` を分けた理由:** `MockTransport` は `Transport` を実装するが、コマンドに応答するにはプロトコルを解釈しなければならない。`transport/` に置くと依存が逆流するため、protocol より上の層として独立させている。
+
+**`testing/` を分けた理由:** `MockTransport` は `Transport` を実装するが、コマンドに応答するにはプロトコルを解釈しなければならない。`transport/` に置くと依存が逆流するため、protocol より上の層として独立させている。
 
 ### 4.4 モジュール解決とパス
 
@@ -390,7 +400,20 @@ class SlipDecoder { push(chunk): Uint8Array[] }
 | 4 | 4 | Value（READ_REG の戻り値） |
 | 8 | n | Data + status bytes |
 
-ステータスバイトは末尾 2 バイト（ROM）または 4 バイト（一部）。`status[0] !== 0` ならエラーで、`status[1]` がエラーコード。実装では「末尾 4 バイトのうち先頭 2 バイトを見る」方式でチップ差を吸収する。
+**ステータスバイトの位置（重要）**
+
+応答のペイロードは `[data][status(2)][reserved(2)]` の並びである。`data` は**そのコマンドが返すと定義されている長さ**であり、末尾の予約 2 バイトは ESP32 系 ROM ローダのみが付ける。
+
+つまり**ステータスの位置はペイロード長から推測できない**。「末尾から数える」実装は、予約バイトの有無で 2 バイトずれる。呼び出し側が期待するデータ長を渡す設計とすること。
+
+```js
+decodeResponse(frame, responseDataLength = 0)
+loader.command(op, payload, { responseDataLength })
+```
+
+`status[0] !== 0` ならエラーで、`status[1]` がエラーコード。ペイロードが `responseDataLength + 2` に満たない場合は、コマンドを即座に拒否した応答とみなして先頭 2 バイトをステータスとして読む。
+
+データ長が可変なのは `GET_SECURITY_INFO`（20 または 12）と `SPI_FLASH_MD5`（ROM は 32 文字の hex 文字列、stub は 16 バイトの生値）で、この 2 つは `responseDataLength` に関数を渡して実行時に判定する。
 
 チェックサムはデータ系コマンド（`FLASH_DATA` / `MEM_DATA` / `FLASH_DEFL_DATA`）のみ。シード `0xEF` に対しペイロードを 1 バイトずつ XOR する。
 
@@ -452,25 +475,51 @@ const url = new URL(`./stub/${chip.stub}.json`, import.meta.url);
 
 ### 6.5 チップ検出
 
-`CHIP_DETECT_MAGIC_REG = 0x40001000` を `READ_REG` で読み、magic 値からチップを同定する。
+**検出方法は 1 つではない。** 世代によって 2 通りあり、両方を順に試す必要がある。
+
+| 世代 | 方法 |
+| --- | --- |
+| ESP32、ESP32-S2 | `CHIP_DETECT_MAGIC_REG = 0x40001000` を `READ_REG` で読み、magic 値で同定する |
+| ESP32-S3 以降 | `GET_SECURITY_INFO (0x14)` の応答に含まれる **chip id** で同定する。これらのチップは固有の magic 値を持たない |
+
+手順:
+
+1. `GET_SECURITY_INFO` を発行する。応答本文が 22 バイト以上なら 20 バイト形式（chip id あり）、それ未満なら 12 バイト形式（ESP32-S2。chip id を含まない）。
+2. chip id が得られ、既知の `IMAGE_CHIP_ID` と一致すればそれを採用する。
+3. 得られなければ magic レジスタを読み、magic テーブルと照合する。
+   - ESP32 は `GET_SECURITY_INFO` 自体を実装していないため、手順 1 は失敗する。これは正常な経路であり、エラーとして扱わない。
+4. どちらでも同定できなければ `UnknownChipError`。UI は「未知のチップです。Flash 操作は行えません」と表示する。**推測して既知チップとして扱ってはならない。**
+
+Secure Download Mode ではレジスタ読み出しも禁止されるため、手順 3 も失敗しうる。
 
 ```js
 /**
  * @typedef {object} ChipDef
- * @property {string} name          - "ESP32-S3"
- * @property {number[]} magic       - 検出 magic 値（複数リビジョンあり）
- * @property {number} flashSizeReg
- * @property {number} macRegBase
- * @property {number} [uartDateReg]
- * @property {string} stub          - stub JSON のファイル名
+ * @property {string} name             - "ESP32-S3"
+ * @property {number} imageChipId      - IMAGE_CHIP_ID。GET_SECURITY_INFO の chip id と同一
+ * @property {boolean} usesMagicValue  - false なら chip id でのみ同定できる
+ * @property {number|null} magicValue
+ * @property {string} stub             - stub JSON のファイル名
  * @property {number} flashWriteSize
+ * @property {number} ramBlockSize
+ * @property {number} bootloaderOffset
+ * @property {number} macEfuseReg
+ * @property {number} spiRegBase       - 以下は RDID による Flash サイズ検出に必要
+ * @property {number} spiUsrOffs
+ * @property {number} spiUsr1Offs
+ * @property {number} spiUsr2Offs
+ * @property {number} spiMosiDlenOffs
+ * @property {number} spiMisoDlenOffs
+ * @property {number} spiW0Offs
+ * @property {boolean} spiAddrRegMsb
  * @property {Array<{start:number,end:number,name:string}>} memoryMap
+ * @property {string[]} features       - 翻訳キーとして使う安定 ID
  */
 ```
 
-チップ定義テーブル（`chips.js`）の magic 値・レジスタアドレスは、**実装時に esptool のソースと突き合わせて検証すること。** 本書には転記しない（値の誤りが致命的であるため、単一の権威ソースを参照する運用とする）。
+magic 値・レジスタアドレスは esptool のターゲット定義と突き合わせて検証する。値の誤りは致命的なので、更新時は必ず一次情報に当たること。
 
-magic が未知の場合は `UnknownChipError` とし、UI では「未知のチップです。Flash 操作は行えません」と表示する。**推測して既知チップとして扱ってはならない。**
+**Flash サイズの検出**は、SPI コントローラの「user command」レジスタ経由で RDID (0x9F) を発行し、返る JEDEC ID の容量バイトから引く。チップごとに SPI レジスタのベースとオフセットが異なるため、`ChipDef` に持たせている。検出できない場合は `null` を返し、**既定値で埋めない**（誤ったサイズはダンプを黙って切り詰める）。
 
 ### 6.6 ブートローダ突入（reset strategy）
 
@@ -1358,18 +1407,23 @@ GitHub Actions で以下を実行する。
 
 ## 22. ロードマップ
 
-### Phase 1 — MVP
+### Phase 1 — MVP（実装済み）
 
-- [ ] Transport（WebSerial / Mock）
-- [ ] Protocol（SLIP / コマンド / チップ検出 / stub loader）
-- [ ] Device Info
-- [ ] Flash read / write / erase / verify / dump
-- [ ] Partition Table 解析・検証
-- [ ] Binary Import / Export
-- [ ] Hex Viewer（仮想スクロール・検索・ハイライト）
-- [ ] Flash Map
-- [ ] Web アプリの骨格（store / Inspector / Log / 安全機構 / i18n）
-- [ ] ビルドスクリプトと GitHub Pages 公開
+- [x] Transport（WebSerial / Mock）
+- [x] Protocol（SLIP / コマンド / チップ検出 / stub loader）
+- [x] Device Info
+- [x] Flash read / write / erase / verify / dump
+- [x] Partition Table 解析・検証・生成
+- [x] ESP Firmware Image 解析（Phase 3 から前倒し。Analyzer の実証に必要だったため）
+- [x] otadata 解析（同上）
+- [x] Binary Diff / 検索（同上）
+- [x] Binary Import / Export
+- [x] Hex Viewer（仮想スクロール・検索・ハイライト）
+- [x] Flash Map
+- [x] Web アプリの骨格（store / Inspector / Log / 安全機構 / i18n）
+- [x] ビルドスクリプトと GitHub Pages 用の site 組み立て
+- [x] CI（テスト / 型検査 / レイヤ検証 / ロケール検証）
+- [ ] 実機での検証
 - [ ] npm 公開
 
 ### Phase 2 — NVS
@@ -1405,7 +1459,13 @@ GitHub Actions で以下を実行する。
 
 | # | 事項 | 備考 |
 | --- | --- | --- |
-| 1 | パッケージ分割の是非と時期 | Phase 4 で判断。それまではディレクトリ境界で規律を保つ |
-| 2 | LittleFS の実装方針 | 自前実装か、既存 JS 実装の移植か |
-| 3 | 実機検証に使えるボードの種類 | README の対応表に反映するため、手元のボードを確認する |
-| 4 | トップページの内容 | Web アプリを直接トップにするか、簡単な説明を挟むか |
+| 1 | **実機検証** | 現状すべて未検証。特に reset シーケンスと READ_FLASH のフロー制御は、MockTransport では本質的に検証できない。手元のボードを教えてもらい README の対応表に反映する |
+| 2 | パッケージ分割の是非と時期 | Phase 4 で判断。それまではディレクトリ境界で規律を保つ |
+| 3 | LittleFS の実装方針 | 自前実装か、既存 JS 実装の移植か |
+| 4 | 追加言語 | ko / de / fr / es / pt-BR / ru。翻訳は JSON を 1 つ足すだけで済む |
+
+**解決済み:**
+
+- ~~stub JSON の同梱範囲~~ → 全 10 チップ分を同梱する。合計 132KB で、しかもバンドルには埋め込まず実行時 fetch なので、解析しか使わない利用者への負担はゼロ。
+- ~~UI の言語~~ → `navigator.languages` から自動判定し、en / ja / zh-Hans / zh-Hant を同梱。
+- ~~トップページの内容~~ → Web アプリを直接トップにする。上部に説明とリンクを常設した。

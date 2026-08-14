@@ -1,0 +1,171 @@
+// @ts-check
+/**
+ * <esp-device-panel> — connection controls and device identity.
+ *
+ * Also carries the standing warnings (ROM mode, Secure Download Mode, flash
+ * encryption). Those change what the rest of the UI can do, so they belong
+ * where the user looks first rather than buried in the log.
+ */
+
+import { t, onLocaleChange } from '../i18n.js';
+import { WebSerialTransport, formatByteSize, toHexAddress } from '../esp-flashjs.js';
+import { store } from '../store.js';
+import { connect, disconnect } from '../actions.js';
+
+const TEMPLATE = `
+<style>
+  :host { display: block; font-family: var(--sans, system-ui, sans-serif); font-size: 13px; }
+  .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  button {
+    background: var(--accent);
+    color: var(--accent-fg);
+    border: 0;
+    border-radius: 5px;
+    padding: 6px 14px;
+    font: inherit;
+    font-weight: 500;
+    cursor: pointer;
+  }
+  button.secondary { background: var(--bg-button); color: var(--fg); border: 1px solid var(--border); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  dl {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 2px 12px;
+    margin: 10px 0 0;
+    font-size: 12px;
+  }
+  dt { color: var(--fg-muted); }
+  dd { margin: 0; font-family: var(--mono, ui-monospace, monospace); }
+  .status { color: var(--fg-muted); }
+  .notice {
+    margin-top: 10px;
+    padding: 8px 10px;
+    border-radius: 5px;
+    border-left: 3px solid var(--warn);
+    background: color-mix(in srgb, var(--warn) 12%, transparent);
+    font-size: 12px;
+    line-height: 1.5;
+  }
+  .notice.error { border-color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent); }
+  .notice h4 { margin: 0 0 3px; font-size: 12px; }
+</style>
+<div class="row" id="controls"></div>
+<div id="details"></div>
+<div id="notices"></div>
+`;
+
+export class EspDevicePanel extends HTMLElement {
+  constructor() {
+    super();
+    this.attachShadow({ mode: 'open' }).innerHTML = TEMPLATE;
+    /** @type {Array<() => void>} */
+    this._cleanup = [];
+  }
+
+  connectedCallback() {
+    const rerender = () => this._render();
+    this._cleanup.push(store.subscribe((s) => s.device, rerender), onLocaleChange(rerender));
+    this._render();
+  }
+
+  disconnectedCallback() {
+    for (const off of this._cleanup) off();
+    this._cleanup = [];
+  }
+
+  _render() {
+    const root = /** @type {ShadowRoot} */ (this.shadowRoot);
+    const { status, info, usingStub } = store.getState().device;
+    const supported = WebSerialTransport.isSupported();
+    const secure = typeof isSecureContext === 'undefined' || isSecureContext;
+
+    const controls = /** @type {HTMLElement} */ (root.getElementById('controls'));
+    controls.replaceChildren();
+
+    const button = document.createElement('button');
+    if (status === 'connected') {
+      button.textContent = t('device.disconnect');
+      button.className = 'secondary';
+      button.addEventListener('click', () => void disconnect());
+    } else {
+      button.textContent = status === 'connecting' ? t('device.connecting') : t('device.connect');
+      button.disabled = status === 'connecting' || !supported || !secure;
+      button.addEventListener('click', () => void connect());
+    }
+    controls.append(button);
+
+    const statusText = document.createElement('span');
+    statusText.className = 'status';
+    statusText.textContent = status === 'connected' ? '' : t('device.disconnected');
+    controls.append(statusText);
+
+    /* Details --------------------------------------------------------- */
+    const details = /** @type {HTMLElement} */ (root.getElementById('details'));
+    if (status !== 'connected' || !info) {
+      details.replaceChildren();
+    } else {
+      const d = /** @type {import('../esp-flashjs.js').DeviceInfo} */ (info);
+      const rows = [
+        [t('device.chip'), d.chip],
+        [t('device.mac'), d.mac],
+        [
+          t('device.flashSize'),
+          d.flashSize === null ? t('device.unknown') : formatByteSize(d.flashSize),
+        ],
+        [t('device.flashId'), d.flashId === null ? t('device.unknown') : toHexAddress(d.flashId, 6)],
+        [t('device.mode'), usingStub ? t('device.mode.stub') : t('device.mode.rom')],
+      ];
+      if (d.features.length > 0) {
+        rows.push([t('device.features'), d.features.map((f) => t(`feature.${f}`)).join(', ')]);
+      }
+
+      const dl = document.createElement('dl');
+      for (const [term, value] of rows) {
+        const dt = document.createElement('dt');
+        dt.textContent = term;
+        const dd = document.createElement('dd');
+        dd.textContent = value;
+        dl.append(dt, dd);
+      }
+      details.replaceChildren(dl);
+    }
+
+    /* Notices --------------------------------------------------------- */
+    const notices = /** @type {HTMLElement} */ (root.getElementById('notices'));
+    notices.replaceChildren();
+
+    if (!supported) {
+      notices.append(notice(t('browser.unsupported.title'), t('browser.unsupported.body')));
+    } else if (!secure) {
+      notices.append(notice(t('browser.unsupported.title'), t('browser.insecureContext'), true));
+    }
+
+    if (status === 'connected' && info) {
+      const d = /** @type {import('../esp-flashjs.js').DeviceInfo} */ (info);
+      if (d.secureDownloadMode) notices.append(notice('', t('device.secureDownloadMode'), true));
+      else if (!usingStub) notices.append(notice('', t('device.romModeWarning')));
+      if (d.flashEncryptionEnabled) notices.append(notice('', t('device.encryptionEnabled')));
+    }
+  }
+}
+
+/**
+ * @param {string} title
+ * @param {string} body
+ * @param {boolean} [isError]
+ * @returns {HTMLElement}
+ */
+function notice(title, body, isError = false) {
+  const div = document.createElement('div');
+  div.className = isError ? 'notice error' : 'notice';
+  if (title) {
+    const h = document.createElement('h4');
+    h.textContent = title;
+    div.append(h);
+  }
+  div.append(document.createTextNode(body));
+  return div;
+}
+
+customElements.define('esp-device-panel', EspDevicePanel);

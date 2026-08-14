@@ -1,0 +1,7 @@
+node_modules
+dist
+site
+types
+*.log
+npm-debug.log*
+.DS_Store

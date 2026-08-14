@@ -1,0 +1,73 @@
+{
+  "name": "esp-flashjs",
+  "version": "0.1.0",
+  "description": "JavaScript toolkit for ESP32 flash analysis, editing and programming.",
+  "type": "module",
+  "license": "MIT",
+  "author": "TANAKA Masayuki",
+  "sideEffects": false,
+  "main": "dist/esp-flashjs.js",
+  "module": "dist/esp-flashjs.js",
+  "browser": "dist/esp-flashjs.min.js",
+  "unpkg": "dist/esp-flashjs.min.js",
+  "jsdelivr": "dist/esp-flashjs.min.js",
+  "types": "types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./types/index.d.ts",
+      "default": "./dist/esp-flashjs.js"
+    },
+    "./core": {
+      "types": "./types/core.d.ts",
+      "default": "./dist/esp-flashjs.core.js"
+    },
+    "./src/*": "./src/*",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "src",
+    "types",
+    "README.md",
+    "README.ja.md",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "esp32",
+    "esptool",
+    "web-serial",
+    "flash",
+    "nvs",
+    "partition-table",
+    "spiffs",
+    "firmware"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tanakamasayuki/esp-flashjs.git"
+  },
+  "bugs": {
+    "url": "https://github.com/tanakamasayuki/esp-flashjs/issues"
+  },
+  "homepage": "https://tanakamasayuki.github.io/esp-flashjs/",
+  "scripts": {
+    "dev": "node scripts/serve.js",
+    "build": "node scripts/build.js",
+    "build:site": "node scripts/build-site.js",
+    "fetch-stub": "node scripts/fetch-stub.js",
+    "test": "node --test \"test/*.test.js\"",
+    "typecheck": "tsc --noEmit",
+    "types": "tsc --declaration --emitDeclarationOnly --noEmit false --outDir types",
+    "lint:layers": "node scripts/check-layers.js",
+    "clean": "node -e \"for (const d of ['dist','site','types']) require('node:fs').rmSync(d,{recursive:true,force:true})\""
+  },
+  "devDependencies": {
+    "@types/w3c-web-serial": "^1.0.8",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.7.0"
+  }
+}
