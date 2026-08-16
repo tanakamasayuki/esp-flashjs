@@ -193,5 +193,67 @@ Recorded for the record; not needed again.
    publishing without 2FA or a 2FA-bypass token
 4. Set **Settings → Pages → Source** to "GitHub Actions". Left at the default,
    the workflow succeeds and publishes nothing
-5. Run the three commands from [section 1](#1-every-release-copy-and-paste-this),
-   starting with `npm version 0.1.0`
+5. For the first release only, follow [section 8](#8-the-first-release-is-a-special-case) —
+   `package.json` already carries the initial version, so the usual three
+   commands do not apply
+
+---
+
+## 8. The first release is a special case
+
+`package.json` starts life at `0.1.0`, so `npm version 0.1.0` stops with:
+
+```text
+npm error Version not changed
+```
+
+**That is not a fault.** npm is declining to create a version commit that
+changes nothing.
+
+But because `npm version` stopped, **everything attached to it was skipped**.
+
+| What `npm version` normally does | Did it happen? |
+| --- | --- |
+| `preversion` = `npm run check` | **No** |
+| Syncing the `VERSION` constant | No (already matching, so harmless) |
+| Creating the commit and the `v0.1.0` tag | **No** |
+
+So for the first release, add `--allow-same-version`. It keeps the version as it
+is while **running the whole normal flow to completion**.
+
+```sh
+npm version 0.1.0 --allow-same-version
+npm publish --access public
+git push --follow-tags
+```
+
+That gives you the `preversion` checks, the `VERSION` sync, the commit and an
+**annotated tag** — exactly what the usual three commands do. No manual
+`git tag` needed.
+
+When `package.json` ends up unchanged, npm creates an empty commit. It is
+harmless, and useful as a marker for where the release happened.
+
+**No flag is needed from the second release onwards**, because the version
+actually changes and `npm version patch` works as documented.
+
+### If you tag by hand anyway
+
+Whatever the reason, **always pass `-a`**.
+
+```sh
+git tag -a v0.1.0 -m "v0.1.0"     # annotated — correct
+git tag v0.1.0                    # lightweight — wrong
+```
+
+`git push --follow-tags` **does not push lightweight tags**, silently and with
+no warning, leaving you with a tag locally and nothing on GitHub. Tags created
+by `npm version` are annotated, so the automated flow is unaffected.
+
+If you already made a lightweight one, push it explicitly or recreate it:
+
+```sh
+git push origin v0.1.0
+# or
+git tag -d v0.1.0 && git tag -a v0.1.0 -m "v0.1.0" && git push --follow-tags
+```
