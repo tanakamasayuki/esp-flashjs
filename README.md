@@ -4,6 +4,10 @@
 
 [日本語 README](./README.ja.md) · [Documentation](./docs/README.md)
 
+[![npm](https://img.shields.io/npm/v/esp-flashjs)](https://www.npmjs.com/package/esp-flashjs)
+[![CI](https://github.com/tanakamasayuki/esp-flashjs/actions/workflows/ci.yml/badge.svg)](https://github.com/tanakamasayuki/esp-flashjs/actions/workflows/ci.yml)
+[![license](https://img.shields.io/npm/l/esp-flashjs)](./LICENSE)
+
 ### ▶ Try it now: **<https://tanakamasayuki.github.io/esp-flashjs/>**
 
 Open it in Chrome or Edge and connect a board — nothing to install. Without a
@@ -44,6 +48,9 @@ Phase 1 is implemented: transport, bootloader protocol, chip detection, stub
 loading, flash read/write/erase/verify/dump, partition tables, firmware images,
 OTA data, binary diff and search, plus the reference web app.
 
+Published as [esp-flashjs@0.1.0](https://www.npmjs.com/package/esp-flashjs).
+Nothing has been verified on real hardware yet — see the chip table below.
+
 NVS analysis and editing (Phase 2) and filesystem support (Phase 3–4) are not
 implemented yet. See [the roadmap](./docs/spec.md#22-roadmap).
 
@@ -60,6 +67,8 @@ import { EspFlash, EspLoader, WebSerialTransport } from 'esp-flashjs';
 // Parsers and binary utilities only — no serial code, smaller, runs in Node.
 import { parsePartitionTable, analyzeBinary } from 'esp-flashjs/core';
 ```
+
+On npm: <https://www.npmjs.com/package/esp-flashjs>
 
 Or from a CDN, with no install at all:
 

@@ -181,9 +181,10 @@ secret.
 
 ---
 
-## 7. First-time setup
+## 7. First-time setup (already done)
 
-Recorded for the record; not needed again.
+**v0.1.0 was published on 2026-08-16** (<https://www.npmjs.com/package/esp-flashjs>).
+What follows is a record; none of it needs doing again.
 
 1. Confirm `npm view esp-flashjs` returns 404, meaning the name is free. If
    someone holds it, pick another name and update `package.json`'s `name`, the
@@ -193,13 +194,13 @@ Recorded for the record; not needed again.
    publishing without 2FA or a 2FA-bypass token
 4. Set **Settings → Pages → Source** to "GitHub Actions". Left at the default,
    the workflow succeeds and publishes nothing
-5. For the first release only, follow [section 8](#8-the-first-release-is-a-special-case) —
-   `package.json` already carries the initial version, so the usual three
-   commands do not apply
+5. The first release went through [section 8](#8-the-first-release-is-a-special-case-record) —
+   `package.json` already carried the initial version, so the usual three
+   commands did not apply
 
 ---
 
-## 8. The first release is a special case
+## 8. The first release is a special case (record)
 
 `package.json` starts life at `0.1.0`, so `npm version 0.1.0` stops with:
 

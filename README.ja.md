@@ -4,6 +4,10 @@
 
 [English README](./README.md) · [ドキュメント](./docs/README.ja.md)
 
+[![npm](https://img.shields.io/npm/v/esp-flashjs)](https://www.npmjs.com/package/esp-flashjs)
+[![CI](https://github.com/tanakamasayuki/esp-flashjs/actions/workflows/ci.yml/badge.svg)](https://github.com/tanakamasayuki/esp-flashjs/actions/workflows/ci.yml)
+[![license](https://img.shields.io/npm/l/esp-flashjs)](./LICENSE)
+
 ### ▶ すぐ試す: **<https://tanakamasayuki.github.io/esp-flashjs/>**
 
 Chrome か Edge で開いてボードを繋ぐだけです。インストールは要りません。デバイスがなくても、`.bin` を放り込めばオフラインで解析できます。
@@ -34,6 +38,8 @@ console.log(table.partitions);
 
 Phase 1 を実装済みです。Transport、ブートローダプロトコル、チップ検出、stub ロード、Flash の read / write / erase / verify / dump、パーティションテーブル、ファームウェアイメージ、OTA データ、バイナリ差分と検索、そしてリファレンス Web アプリまで動きます。
 
+[esp-flashjs@0.1.0](https://www.npmjs.com/package/esp-flashjs) として公開済みです。ただし**実機検証はまだ行っていません**（下の対応チップ表を参照）。
+
 NVS の解析・編集（Phase 2）とファイルシステム対応（Phase 3〜4）は未実装です。[ロードマップ](./docs/spec.ja.md#22-ロードマップ)を参照してください。
 
 ## インストール
@@ -49,6 +55,8 @@ import { EspFlash, EspLoader, WebSerialTransport } from 'esp-flashjs';
 // parser とバイナリユーティリティのみ。シリアル関連を含まず軽量で、Node.js でも動作
 import { parsePartitionTable, analyzeBinary } from 'esp-flashjs/core';
 ```
+
+npm のページ: <https://www.npmjs.com/package/esp-flashjs>
 
 CDN からならインストールも不要です。
 

@@ -12,7 +12,12 @@
 
 全文書に英語版があり、`.ja.md` を外したファイル名で置いてあります。各ページ冒頭のリンクから行き来できます。
 
-Web アプリの公開先: <https://tanakamasayuki.github.io/esp-flashjs/>
+公開先:
+
+| | |
+| --- | --- |
+| Web アプリ | <https://tanakamasayuki.github.io/esp-flashjs/> |
+| npm | <https://www.npmjs.com/package/esp-flashjs> |
 
 ## どこから読むか
 

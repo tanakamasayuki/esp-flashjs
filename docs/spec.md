@@ -1659,8 +1659,8 @@ See [publishing.md](./publishing.md) for the full account. In brief:
 - [x] Web app skeleton (store / Inspector / log / safety / i18n)
 - [x] Build scripts and site assembly for GitHub Pages
 - [x] CI (tests / types / layers / locales)
+- [x] npm publication ([v0.1.0](https://www.npmjs.com/package/esp-flashjs), 2026-08-16)
 - [ ] Verification on real hardware
-- [ ] npm publication
 
 ### Phase 2 — NVS
 

@@ -13,7 +13,12 @@
 Every document has a Japanese counterpart with the `.ja.md` suffix, linked from
 the top of each page.
 
-The published web app: <https://tanakamasayuki.github.io/esp-flashjs/>
+Where it is published:
+
+| | |
+| --- | --- |
+| Web app | <https://tanakamasayuki.github.io/esp-flashjs/> |
+| npm | <https://www.npmjs.com/package/esp-flashjs> |
 
 ## Where to start
 

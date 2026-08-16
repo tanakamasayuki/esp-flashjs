@@ -145,7 +145,7 @@ npmjs.com で Trusted Publishing（GitHub Actions / このリポジトリ / `rel
 
 ### 5.2 npm への公開
 
-**通常は何も設定しません。** 公開は手元の `npm publish` で行うので、リポジトリ側に必要な設定はありません。必要なのは `npm login` と npm アカウントの 2FA だけです（[リリース手順 7 章](./release.ja.md#7-初回だけの準備)）。
+**通常は何も設定しません。** 公開は手元の `npm publish` で行うので、リポジトリ側に必要な設定はありません。必要なのは `npm login` と npm アカウントの 2FA だけです（[リリース手順 7 章](./release.ja.md#7-初回だけの準備完了済み)）。
 
 Actions から公開したくなった場合のみ、npmjs.com で Trusted Publishing（GitHub Actions / このリポジトリ / `release.yml`）を登録するか、Automation トークンを **Settings → Secrets and variables → Actions** に `NPM_TOKEN` として置きます。
 

@@ -170,7 +170,7 @@ while publishing nothing.
 
 **Normally nothing to configure.** Publishing happens through a local
 `npm publish`, so the repository needs no setup at all — only `npm login` and
-2FA on the npm account ([release.md §7](./release.md#7-first-time-setup)).
+2FA on the npm account ([release.md §7](./release.md#7-first-time-setup-already-done)).
 
 Only if you want to publish from Actions: register Trusted Publishing on
 npmjs.com (GitHub Actions / this repository / `release.yml`), or add an

@@ -1440,8 +1440,8 @@ GitHub Actions で以下を実行する。ローカルでは `npm run check` が
 - [x] Web アプリの骨格（store / Inspector / Log / 安全機構 / i18n）
 - [x] ビルドスクリプトと GitHub Pages 用の site 組み立て
 - [x] CI（テスト / 型検査 / レイヤ検証 / ロケール検証）
+- [x] npm 公開（[v0.1.0](https://www.npmjs.com/package/esp-flashjs)、2026-08-16）
 - [ ] 実機での検証
-- [ ] npm 公開
 
 ### Phase 2 — NVS
 
