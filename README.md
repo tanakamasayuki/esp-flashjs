@@ -201,6 +201,9 @@ npm run build:site     # site/, what Pages serves
 npm run fetch-stub     # refresh the flasher stubs
 ```
 
+Publishing to npm is done from a local machine, in three commands — see the
+[release procedure](./docs/release.md).
+
 Tests run against `MockTransport`, an in-memory device that speaks the real SLIP
 protocol against a `Uint8Array` standing in for flash. That is what makes the
 protocol layer testable in CI.

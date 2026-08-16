@@ -15,18 +15,22 @@ Related: [Development guide](./development.md) / [Release](./release.md)
 | --- | --- | --- | --- |
 | **CI** | `.github/workflows/ci.yml` | push to `main`, every PR | Verify the checks and the build pass |
 | **Pages** | `.github/workflows/pages.yml` | push to `main`, manual | Check → build → deploy to GitHub Pages |
-| **Release** | `.github/workflows/release.yml` | push of a `v*` tag | Check → build → publish to npm |
+| **Release** | `.github/workflows/release.yml` | **manual only** | Check → build → publish to npm (a spare) |
 
 ```text
 open a PR ─────────────► CI (checks only)
                             │
 merge to main ─────────► CI + Pages (site updated)
                             │
-push tag v0.2.0 ───────► Release (published to npm)
+npm publish (locally) ─► published to npm   ← Actions is not involved
 ```
 
-All three run the same checks up front. The duplication is deliberate: the point
-is **never to publish something broken**.
+**Publishing to npm happens from a local machine.** Pushing a tag does not make
+Actions touch npm ([release.md](./release.md)). That keeps any token out of this
+repository.
+
+CI and Pages run the same checks up front. The duplication is deliberate: the
+point is **never to publish something broken**.
 
 ---
 
@@ -119,34 +123,34 @@ enabled, so you can redeploy without a code change.
 
 ---
 
-## 4. Release
+## 4. Release (a spare)
 
 `.github/workflows/release.yml`
 
-A tag push is the only trigger. The procedure is in
-[release.md](./release.md); this section covers the mechanism.
+**Not normally used.** Publishing goes through a local `npm publish`
+([release.md](./release.md)).
 
 ```yaml
 on:
-  push:
-    tags: ['v*']
+  workflow_dispatch:      # manual only; a tag push does not fire it
 
 permissions:
-  contents: write
-  id-token: write   # required for npm provenance
+  contents: read
+  id-token: write         # npm provenance / Trusted Publishing
 ```
 
-After the same checks as CI: `npm run build` → `npm run types` (emit `.d.ts`) →
-`npm publish --provenance --access public`.
+**Why no tag trigger:** Actions would try to publish a version the local run has
+already published, fail every time, and leave a red badge behind. There is one
+publishing route, deliberately.
 
-### 4.1 What provenance does
+After the same checks as CI it runs `npm publish --provenance --access public`
+(`prepack` builds `dist` and `types`).
 
-`--provenance` attaches a verifiable statement to the npm package saying it was
-published from this GitHub Actions workflow run. A badge appears on the package
-page.
+### 4.1 If you do want to use it
 
-For a library that rewrites device firmware, being able to trace where a release
-came from has real value. It requires `id-token: write`.
+Register Trusted Publishing on npmjs.com (GitHub Actions / this repository /
+`release.yml`) and it can publish from the Actions tab without a token, with a
+provenance badge attached on npm.
 
 ---
 
@@ -164,21 +168,14 @@ while publishing nothing.
 
 ### 5.2 Publishing to npm
 
-Pick one.
+**Normally nothing to configure.** Publishing happens through a local
+`npm publish`, so the repository needs no setup at all — only `npm login` and
+2FA on the npm account ([release.md §7](./release.md#7-first-time-setup)).
 
-**A. Trusted Publishing (recommended)**
-
-On npmjs.com, register the GitHub repository and the workflow filename
-(`release.yml`) in the package settings. No long-lived token lives in the
-repository.
-
-The package has to exist first, so the very first release is published by hand
-from a local machine.
-
-**B. Token**
-
-Create an npm Automation token and add it under **Settings → Secrets and
-variables → Actions** as `NPM_TOKEN`. That is the name `release.yml` reads.
+Only if you want to publish from Actions: register Trusted Publishing on
+npmjs.com (GitHub Actions / this repository / `release.yml`), or add an
+Automation token as the `NPM_TOKEN` secret under **Settings → Secrets and
+variables → Actions**.
 
 ### 5.3 Environment (optional)
 
@@ -206,8 +203,7 @@ Actions tab → the run → open the red step. The step names are the diagnosis.
 | `lint:locales`: missing | Add the translation, or remove the key from `en.json` |
 | `build:site`: "Absolute paths found" | Something wrote `/src/...`. The site is served from a subdirectory, so this always breaks |
 | Pages succeeds but nothing changes | Check that Source is "GitHub Actions". Then suspect caching |
-| Release: 403 / E404 | npm permissions. An expired token, or Trusted Publishing not configured |
-| Release: provenance error | Check `id-token: write`. It does not work for tags pushed from a fork |
+| Release (manual): 403 / E404 | npm permissions — Trusted Publishing not configured, or an expired token. Note that the normal route is a local publish |
 
 ### 6.3 Re-running
 
@@ -223,9 +219,9 @@ A PR that edits `.github/workflows/*.yml` runs CI **using the definition on that
 branch** (for `pull_request` triggers). `pages.yml` and `release.yml`, by
 contrast, only take effect once merged to `main`.
 
-`pages.yml` has `workflow_dispatch`, so you can verify it manually after
-merging. `release.yml` is less forgiving — a failure means re-tagging. Test
-changes with a throwaway version such as `v0.0.1-test`.
+Both `pages.yml` and `release.yml` have `workflow_dispatch`, so you can verify
+them manually after merging. Bear in mind that running `release.yml` really does
+publish, so only exercise it once Trusted Publishing is configured.
 
 ---
 

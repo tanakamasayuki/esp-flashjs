@@ -66,7 +66,8 @@
     "preversion": "npm run check",
     "version": "node scripts/sync-version.js && git add src/index.js",
     "typecheck": "tsc --noEmit",
-    "types": "tsc --declaration --emitDeclarationOnly --noEmit false --outDir types",
+    "types": "tsc -p tsconfig.types.json",
+    "prepack": "npm run build && npm run types",
     "lint:layers": "node scripts/check-layers.js",
     "lint:locales": "node scripts/check-locales.js",
     "clean": "node -e \"for (const d of ['dist','site','types']) require('node:fs').rmSync(d,{recursive:true,force:true})\""

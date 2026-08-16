@@ -1,0 +1,12 @@
+{
+  "//": "Emits types/ for npm consumers. Separate from tsconfig.json because that one also checks web/, whose declarations must not ship — and because rootDir must be src/ for types/index.d.ts to land where package.json points.",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "outDir": "types",
+    "rootDir": "src"
+  },
+  "include": ["src/**/*.js"]
+}

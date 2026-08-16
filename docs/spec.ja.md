@@ -1417,7 +1417,7 @@ GitHub Actions で以下を実行する。ローカルでは `npm run check` が
 | 経路 | 内容 |
 | --- | --- |
 | GitHub Pages | GitHub Actions が `scripts/build-site.js` で `site/` を組み立ててデプロイ |
-| npm | 単一パッケージ `esp-flashjs`。`dist` に full と core の 2 系統 |
+| npm | 単一パッケージ `esp-flashjs`。`dist` に full と core の 2 系統。**公開は手元のマシンから**（トークンをリポジトリに置かない） |
 | CDN | jsDelivr から `dist/esp-flashjs.min.js` を直接読み込み可能 |
 
 ---

@@ -171,6 +171,8 @@ npm run build:site     # site/。Pages が配信するもの
 npm run fetch-stub     # flasher stub を取り直す
 ```
 
+npm への公開は手元のマシンから、コピペ 3 行で行います。[リリース手順](./docs/release.ja.md)を参照してください。
+
 テストは `MockTransport` に対して走ります。これは `Uint8Array` を Flash に見立て、本物の SLIP プロトコルで応答する仮想デバイスです。プロトコル層を CI で検証できるのはこのおかげです。
 
 ソースは素の JavaScript です。TypeScript は JSDoc の型検査と、リリース時の `.d.ts` 生成にしか使っておらず、トランスパイルは一切行いません。

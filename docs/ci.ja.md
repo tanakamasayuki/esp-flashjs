@@ -14,17 +14,19 @@
 | --- | --- | --- | --- |
 | **CI** | `.github/workflows/ci.yml` | `main` への push、全 PR | 検査してビルドが通ることを確認 |
 | **Pages** | `.github/workflows/pages.yml` | `main` への push、手動 | 検査 → ビルド → GitHub Pages へデプロイ |
-| **Release** | `.github/workflows/release.yml` | `v*` タグの push | 検査 → ビルド → npm へ公開 |
+| **Release** | `.github/workflows/release.yml` | **手動実行のみ** | 検査 → ビルド → npm へ公開（予備） |
 
 ```text
 PR を作る ──────────────► CI（検査のみ）
                              │
 main にマージ ──────────► CI ＋ Pages（サイト更新）
                              │
-v0.2.0 タグを push ─────► Release（npm 公開）
+npm publish（手元） ────► npm へ公開   ← Actions は関与しない
 ```
 
-3 本とも同じ検査を先頭で走らせます。**壊れたものを公開しないことが目的**なので、意図的に重複させています。
+**npm への公開は手元のマシンから行います。**タグを push しても Actions は npm に触りません（[リリース手順](./release.ja.md)）。トークンをリポジトリに置かないための判断です。
+
+CI と Pages は同じ検査を先頭で走らせます。**壊れたものを公開しないことが目的**なので、意図的に重複させています。
 
 ---
 
@@ -106,29 +108,28 @@ Actions タブ → Deploy to GitHub Pages → Run workflow。`workflow_dispatch`
 
 ---
 
-## 4. Release
+## 4. Release（予備）
 
 `.github/workflows/release.yml`
 
-タグ push が唯一のトリガです。手順の詳細は[リリース手順](./release.ja.md)にあります。ここでは仕組みだけ。
+**通常は使いません。** npm への公開は手元から `npm publish` で行います（[リリース手順](./release.ja.md)）。
 
 ```yaml
 on:
-  push:
-    tags: ['v*']
+  workflow_dispatch:      # 手動実行のみ。タグ push では発火しない
 
 permissions:
-  contents: write
-  id-token: write   # npm provenance に必要
+  contents: read
+  id-token: write         # npm provenance / Trusted Publishing に必要
 ```
 
-CI と同じ検査の後、`npm run build` → `npm run types`（`.d.ts` 生成）→ `npm publish --provenance --access public`。
+**タグ push で発火させない理由:** ローカルで publish 済みのバージョンを Actions が再度公開しようとして必ず失敗し、赤いバッジだけが残るためです。公開経路は 1 本に絞ってあります。
 
-### 4.1 provenance とは
+CI と同じ検査の後、`npm publish --provenance --access public` を実行します（`prepack` が `dist` と `types` を作ります）。
 
-`--provenance` を付けると、npm 上に「このパッケージは GitHub Actions のこのワークフロー実行から公開された」という検証可能な証明が残ります。npm のパッケージページにバッジが出ます。
+### 4.1 使うとしたら
 
-ハードウェアのファームウェアを書き換えるライブラリなので、供給元をたどれることには実質的な価値があります。これを機能させるには `id-token: write` が必須です。
+npmjs.com で Trusted Publishing（GitHub Actions / このリポジトリ / `release.yml`）を登録すると、Actions タブから手動実行してトークンなしで公開できます。npm 上に provenance のバッジが付きます。
 
 ---
 
@@ -144,17 +145,9 @@ CI と同じ検査の後、`npm run build` → `npm run types`（`.d.ts` 生成�
 
 ### 5.2 npm への公開
 
-いずれかを選びます。
+**通常は何も設定しません。** 公開は手元の `npm publish` で行うので、リポジトリ側に必要な設定はありません。必要なのは `npm login` と npm アカウントの 2FA だけです（[リリース手順 7 章](./release.ja.md#7-初回だけの準備)）。
 
-**A. Trusted Publishing（推奨）**
-
-npmjs.com のパッケージ設定で、GitHub リポジトリとワークフローファイル名（`release.yml`）を登録します。長期トークンをリポジトリに置かずに済みます。
-
-初回だけは手元から `npm publish` してパッケージを作る必要があります（存在しないパッケージには設定できないため）。
-
-**B. トークン**
-
-npm で Automation トークンを発行し、**Settings → Secrets and variables → Actions** に `NPM_TOKEN` として登録します。`release.yml` はこの名前を参照しています。
+Actions から公開したくなった場合のみ、npmjs.com で Trusted Publishing（GitHub Actions / このリポジトリ / `release.yml`）を登録するか、Automation トークンを **Settings → Secrets and variables → Actions** に `NPM_TOKEN` として置きます。
 
 ### 5.3 Environment（任意）
 
@@ -180,8 +173,7 @@ Actions タブ → 該当の実行 → 赤いステップを開く。ステッ�
 | `lint:locales` で missing | 訳を追加するか、`en.json` から不要なキーを消す |
 | `build:site` で「Absolute paths found」 | `/src/...` のような絶対パスを書いた。サイトはサブディレクトリ配信なので必ず壊れる |
 | Pages が成功するのに反映されない | Source が「GitHub Actions」になっているか確認。キャッシュも疑う |
-| Release で 403 / E404 | npm の権限。トークンの期限切れ、または Trusted Publishing の設定漏れ |
-| Release で provenance エラー | `id-token: write` があるか。フォークからのタグ push では動きません |
+| Release（手動実行）で 403 / E404 | npm の権限。Trusted Publishing の設定漏れ、またはトークンの期限切れ。そもそも通常は手元から publish します |
 
 ### 6.3 再実行
 
@@ -193,7 +185,7 @@ Actions タブ → 該当の実行 → 赤いステップを開く。ステッ�
 
 `.github/workflows/*.yml` を編集した PR は、**その PR のブランチ上の定義で** CI が動きます（`pull_request` トリガの場合）。一方 `pages.yml` と `release.yml` は `main` にマージされるまで新しい定義では動きません。
 
-`workflow_dispatch` のある `pages.yml` は、マージ後に手動実行して確認できます。`release.yml` は失敗するとタグを打ち直すことになるので、変更したときは特に慎重に。捨てバージョン（`v0.0.1-test`）で試すのが安全です。
+`pages.yml` と `release.yml` はどちらも `workflow_dispatch` を持つので、マージ後に手動実行して確認できます。`release.yml` は実行すると本当に publish するため、動作確認は Trusted Publishing を設定してからにしてください。
 
 ---
 

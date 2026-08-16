@@ -2,115 +2,79 @@
 
 **English** · [日本語](./release.ja.md)
 
-Publishing to npm and updating GitHub Pages.
+Publishing to npm happens **from a local machine**, so that no token lives in
+this repository.
 
 Related: [Development guide](./development.md) / [CI](./ci.md) / [Publishing](./publishing.md)
 
 ---
 
-## 1. Overview
+## 1. Every release (copy and paste this)
 
-There are two publishing targets, and **their triggers differ**.
-
-| Target | Trigger | Frequency |
-| --- | --- | --- |
-| **GitHub Pages** | push to `main` | Automatic, every time |
-| **npm** | push of a `v*` tag | Only on release |
-
-Merging to `main` keeps the site current on its own, but publishes nothing to
-npm. Reaching npm always requires the explicit act of pushing a tag.
-
----
-
-## 2. Versioning
-
-Semver.
-
-**While on `0.x`, breaking changes may go into a minor bump** (`0.1.0` →
-`0.2.0`). The API is not settled yet. The README says so too.
-
-`1.0.0` waits until all of the following hold:
-
-- The major chips have been verified on real hardware
-- NVS editing and write-back (Phase 2) works
-- No breaking API changes are still wanted
-
-| Change | On 0.x | On 1.0+ |
-| --- | --- | --- |
-| Bug fix | patch | patch |
-| New feature | minor | minor |
-| Breaking change | minor | major |
-
----
-
-## 3. First release only
-
-One-time setup. For every subsequent release, skip to [section 4](#4-release-procedure).
-
-### 3.1 Check the package name
+With `main` clean and everything committed:
 
 ```sh
-npm view esp-flashjs
+npm version patch              # patch for fixes / minor for features / major for breaking changes
+npm publish --access public    # enter the 2FA code when asked
+git push --follow-tags
 ```
 
-A `404` means it is free. If someone holds it, pick another name and update
-`package.json`'s `name`, the import examples in both READMEs, and every CDN URL.
+That is the whole procedure. What each command does on its own:
 
-### 3.2 Publish the first version by hand
-
-Trusted Publishing can only be configured on a package that already exists, so
-the first publish comes from a local machine.
-
-```sh
-npm login
-npm run check && npm run build && npm run types
-npm publish --access public
-```
-
-### 3.3 Configure Trusted Publishing
-
-On the npmjs.com package page → Settings → Trusted Publisher:
-
-| Field | Value |
+| Command | Runs automatically |
 | --- | --- |
-| Provider | GitHub Actions |
-| Repository | `tanakamasayuki/esp-flashjs` |
-| Workflow filename | `release.yml` |
+| `npm version <ver>` | ① `preversion` = `npm run check` (tests, types, layers, locales — **a failure means no version is created**) ② `scripts/sync-version.js` syncs the `VERSION` constant in `src/index.js` ③ commits and creates the `v*` tag |
+| `npm publish` | `prepack` = `npm run build` + `npm run types`, producing `dist/` and `types/` before packing |
+| `git push --follow-tags` | Pushes the commit and the tag. Pages redeploys. **release.yml does not fire** — it is a manual-only spare |
 
-This keeps long-lived tokens out of the repository. If you skip it, add an npm
-Automation token as the `NPM_TOKEN` secret instead
-([CI §5.2](./ci.md#52-publishing-to-npm)).
+Choosing the bump:
 
-### 3.4 Enable GitHub Pages
+| Change | Command |
+| --- | --- |
+| Bug fix or documentation only | `npm version patch` |
+| Backwards-compatible feature | `npm version minor` |
+| Breaking change (API changed or removed) | `npm version major` |
 
-**Settings → Pages → Source** must be **"GitHub Actions"**. Left at the default,
-the workflow succeeds and publishes nothing.
+While on `0.x`, **breaking changes may go into a minor bump** (`0.1.0` →
+`0.2.0`). The API is not settled yet, and the README says so.
 
 ---
 
-## 4. Release procedure
+## 2. What is automatic and what is not
 
-### 4.1 Pre-flight
+Pushing does not publish to npm. **A local `npm publish` is the only route.**
+
+| Target | Trigger | Where it runs |
+| --- | --- | --- |
+| **npm** | `npm publish` | **Your machine** |
+| **GitHub Pages** | push to `main` | GitHub Actions, automatically |
+| **CI (checks)** | push / PR | GitHub Actions, automatically |
+
+`release.yml` does not run on a tag push. It would race the local publish and
+fail red on a version npm already has. To publish from CI instead, see
+[section 6](#6-if-you-want-to-publish-from-ci).
+
+---
+
+## 3. What to check by hand first
+
+`npm version` runs `npm run check`, so tests, types, layers and locales are
+covered. Only the things it cannot see are left.
+
+- [ ] `git status` is clean
+- [ ] The **chip support table** in both READMEs is current — mark a chip
+      verified only if it actually was
+- [ ] Phase progress in the READMEs matches reality
+- [ ] Any breaking change is written up in the READMEs
+- [ ] The **version in every CDN URL** in the READMEs and `examples/` is bumped
 
 ```sh
-git switch main && git pull
-npm ci
-npm run check && npm run build && npm run build:site
+grep -rn "esp-flashjs@[0-9]" README.md README.ja.md examples/ docs/
 ```
 
-Use `npm ci`, not `npm install`: verifying against dependencies that differ from
-the lock file proves nothing.
+Left stale, someone trying a new feature loads old code.
 
-Confirm:
-
-- [ ] `main` is current and the tree is clean (`git status`)
-- [ ] `npm run check` passes
-- [ ] Both READMEs reflect the changes (supported chips, phase progress, API changes)
-- [ ] Any breaking change is called out in the READMEs
-- [ ] The hardware-verification table is updated for anything newly tested
-- [ ] `npm pack --dry-run` contains the right files ([4.2](#42-check-the-package-contents))
-
-### 4.2 Check the package contents
+### Check the package contents
 
 ```sh
 npm pack --dry-run
@@ -121,87 +85,22 @@ npm pack --dry-run
 
 **Must be absent:** `web/`, `examples/`, `test/`, `site/`, `scripts/`, `docs/`
 
-npm consumers do not need the reference app; shipping it only inflates the
-tarball. The `files` field controls this.
-
 `src/protocol/stub/*.json` and `dist/stub/*.json` **must be included** — they are
 fetched at runtime, and flash reads do not work without them.
 
-### 4.3 Bump the version and tag
-
-```sh
-npm version minor    # or patch / major
-```
-
-npm's lifecycle turns this single command into the following:
-
-| Stage | What runs | Effect |
-| --- | --- | --- |
-| `preversion` | `npm run check` | The checks. **A failure stops here** and no version is bumped |
-| — | npm | Updates `version` in `package.json` |
-| `version` | `scripts/sync-version.js` | Syncs the `VERSION` constant in `src/index.js` and stages it |
-| — | npm | Creates the commit (message `0.2.0`) and the `v0.2.0` tag |
-
-The `VERSION` sync is automated because doing it by hand always drifts, and a
-drifted constant makes the version line in an attached bug report a lie.
-
-**Still manual:** the version numbers written into CDN URLs in both READMEs and
-in `examples/`. Left stale, someone trying a new feature loads old code.
-
-```sh
-grep -rn "esp-flashjs@[0-9]" README.md README.ja.md examples/ docs/
-```
-
-### 4.4 Push
-
-```sh
-git push origin main
-git push origin --tags
-```
-
-The `main` push triggers Pages; the tag push triggers Release.
-
-### 4.5 Verify
-
-Once **Release to npm** is green in the Actions tab:
-
-```sh
-npm view esp-flashjs version        # the new version should appear
-npm view esp-flashjs dist.tarball
-```
-
-Then the CDN — jsDelivr can lag by a few minutes:
-
-```sh
-curl -sI https://cdn.jsdelivr.net/npm/esp-flashjs@0.2.0/dist/esp-flashjs.min.js | head -1
-```
-
-Check for the provenance badge on the npm package page. If it is missing, look
-at `id-token: write` and the Trusted Publishing configuration.
-
-### 4.6 Write the GitHub Release
-
-The tag exists, so go to Releases → Draft a new release, select it, and write up
-the changes. Nothing generates this automatically.
-
-Worth including:
-
-- New features
-- **Breaking changes** — on `0.x` these arrive in a minor bump, so make them
-  impossible to miss
-- Bug fixes
-- Chips that have newly been verified on hardware
-
 ---
 
-## 5. After publishing
+## 4. After publishing
 
-- [ ] `https://tanakamasayuki.github.io/esp-flashjs/` runs the new version
-- [ ] The CDN example works (run the README snippet verbatim)
-- [ ] `npm i esp-flashjs` followed by an `import` succeeds
-- [ ] TypeScript consumers get types (the `.d.ts` emitted correctly)
+```sh
+npm view esp-flashjs version
+```
 
-For the last one, use a throwaway directory:
+- npm page: <https://www.npmjs.com/package/esp-flashjs>
+- CDN (can lag by a few minutes): <https://cdn.jsdelivr.net/npm/esp-flashjs/dist/esp-flashjs.min.js>
+- Web app: <https://tanakamasayuki.github.io/esp-flashjs/>
+
+To confirm the type definitions arrived, use a throwaway directory:
 
 ```sh
 mkdir /tmp/check && cd /tmp/check && npm init -y
@@ -209,69 +108,90 @@ npm i esp-flashjs
 node -e "import('esp-flashjs/core').then(m => console.log(Object.keys(m).length, 'exports'))"
 ```
 
+Write the GitHub Release by hand (Releases → Draft a new release, pick the tag).
+Worth including: new features, **breaking changes** (on `0.x` they arrive in a
+minor bump, so make them impossible to miss), bug fixes, and any chip newly
+verified on hardware.
+
 ---
 
-## 6. When something goes wrong
+## 5. When something goes wrong
 
-### 6.1 Caught before pushing
+**`403 Two-factor authentication ... is required`**
 
-Nothing has left the machine yet.
+The one-time code did not reach npm. `npm version` already succeeded, so only
+the publish needs repeating.
 
 ```sh
-git tag -d v0.2.0
-git reset --hard HEAD~1     # undo the npm version commit
+npm publish --access public --otp=123456   # the current six digits from your authenticator
 ```
 
-### 6.2 Already published
-
-**Treat an npm publish as irreversible.** `npm unpublish` only works within 72
-hours and only if nothing depends on the package, and the version number can
-never be reused.
-
-**The rule: don't withdraw, ship the fix.**
+**Undo a version before publishing**
 
 ```sh
-# Flag the broken version so consumers hear about it
+git reset --hard HEAD~1      # drop the commit npm version created
+git tag -d v0.1.1            # and the tag (adjust the number)
+```
+
+**Fix a version that is already published**
+
+Avoid `npm unpublish` — it is limited to 72 hours and the number can never be
+reused. Ship the fix instead.
+
+```sh
 npm deprecate esp-flashjs@0.2.0 "Broken flash read; use 0.2.1 or later"
-
-# Fix and release a patch
 npm version patch
-git push origin main --tags
+npm publish --access public
+git push --follow-tags
 ```
 
-The `latest` dist-tag moves to the new version automatically, so
-`npm i esp-flashjs` gets the fix.
+The `latest` dist-tag moves automatically, so `npm i esp-flashjs` gets the fix.
 
-### 6.3 Pages is broken
+**`npm version` stopped at the checks**
 
-Revert on `main` and push; the next deploy restores it. To move faster,
-`git revert` to the last good commit and trigger the workflow manually from the
-Actions tab.
+That is its job. No version and no tag were created, so fix the problem and run
+it again.
+
+**Pages is broken**
+
+Revert on `main` and push; the next deploy restores it. To move faster, run
+Deploy to GitHub Pages manually from the Actions tab.
 
 ---
 
-## 7. Checklist
+## 6. If you want to publish from CI
 
-```text
-Prepare
-  [ ] main is current and clean
-  [ ] npm ci
-  [ ] npm run check && npm run build && npm run build:site
-  [ ] npm pack --dry-run shows the right files
-  [ ] READMEs: chip table and phase progress updated
-  [ ] READMEs and examples: CDN version numbers updated
+`.github/workflows/release.yml` is still there. It is `workflow_dispatch` only,
+so it runs **only when started by hand from the Actions tab**.
 
-Release
-  [ ] npm version <patch|minor|major>    ← checks and VERSION sync are automatic
-  [ ] git push origin main
-  [ ] git push origin --tags
+To use it, register Trusted Publishing in the package settings on npmjs.com:
 
-Verify
-  [ ] Actions: Release is green
-  [ ] Actions: Pages is green
-  [ ] npm view esp-flashjs version
-  [ ] Provenance badge present
-  [ ] The Pages site works
-  [ ] The CDN URL resolves
-  [ ] GitHub Release notes written
-```
+| Field | Value |
+| --- | --- |
+| Provider | GitHub Actions |
+| Repository | `tanakamasayuki/esp-flashjs` |
+| Workflow filename | `release.yml` |
+
+That publishes without a token and attaches provenance — a verifiable statement
+that the package came from this workflow run. For a library that rewrites device
+firmware, being able to trace where a release came from has real value.
+
+Without Trusted Publishing, add an npm Automation token as the `NPM_TOKEN`
+secret.
+
+---
+
+## 7. First-time setup
+
+Recorded for the record; not needed again.
+
+1. Confirm `npm view esp-flashjs` returns 404, meaning the name is free. If
+   someone holds it, pick another name and update `package.json`'s `name`, the
+   import examples in both READMEs, and every CDN URL
+2. `npm login` to link this machine to the npm account
+3. Enable 2FA (an authenticator app) on the npm account — npm no longer allows
+   publishing without 2FA or a 2FA-bypass token
+4. Set **Settings → Pages → Source** to "GitHub Actions". Left at the default,
+   the workflow succeeds and publishes nothing
+5. Run the three commands from [section 1](#1-every-release-copy-and-paste-this),
+   starting with `npm version 0.1.0`

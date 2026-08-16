@@ -250,22 +250,35 @@ JSDoc and shipped. No type files are maintained by hand.
 - CI runs `tsc --noEmit` over the JSDoc. In binary handling, a swapped argument
   or a forgotten `await` does not raise — it quietly writes a corrupted image.
   That is what makes this check worth its cost.
-- `npm run types` emits `types/` at release time. **The output is not
+- `types/` is emitted through `tsconfig.types.json` (`rootDir: src`). The
+  checking config also covers `web/`, so using it directly would emit to
+  `types/src/index.d.ts` and never produce the `types/index.d.ts` that
+  `package.json` points at.
+- `prepack` emits it automatically during `npm publish`. **The output is not
   committed.**
 
 ### 3.5 Publishing flow
 
-`.github/workflows/release.yml`, triggered by a `v*` tag.
+**Publishing to npm happens from a local machine**, so no token lives in the
+repository.
 
-`npm ci` → `npm test` → `npm run typecheck` → `npm run build` → `npm run types`
-→ `npm publish --provenance --access public`
+```sh
+npm version patch              # preversion runs the checks; VERSION is synced
+npm publish --access public    # prepack runs build + types
+git push --follow-tags
+```
 
-- **Use `--provenance`.** For a library that rewrites device firmware, making
-  the origin verifiable on npm is worth the step.
-- Configure npm Trusted Publishing (OIDC) so no long-lived token lives in the
-  repository.
+`.github/workflows/release.yml` still exists but is `workflow_dispatch` only; a
+tag push does not fire it, because it would race the local publish and fail
+every time. To publish from CI instead, configure Trusted Publishing (OIDC) and
+run it by hand.
+
+- When publishing from Actions, **use `--provenance`.** For a library that
+  rewrites device firmware, a verifiable origin is worth having.
 - Semver, with breaking changes allowed in a minor bump while on `0.x` — stated
   in the README.
+
+The step-by-step procedure is in [release.md](./release.md).
 
 ---
 
@@ -335,6 +348,7 @@ breaks other people's pages the moment a breaking change lands.
 - [ ] `npm view esp-flashjs` confirms the name is available
 - [ ] No absolute paths anywhere (`src="/`, `from '/`) — verified by grep
 - [ ] Settings → Pages → Source = GitHub Actions
+- [ ] `npm login` done, with 2FA enabled on the npm account
 - [ ] The output of `npm run build:site` opens and works
 - [ ] Verified by hand on Pages, through to a real device connection in Chrome
 - [ ] Opened in Firefox or Safari: binary mode works, the connect UI says "not supported"

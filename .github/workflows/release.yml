@@ -1,12 +1,25 @@
-name: Release to npm
+# Publishing to npm happens from a local machine, so no token lives in this
+# repository:
+#
+#   npm login                      # first time only
+#   npm version patch              # preversion runs the checks, VERSION is synced
+#   npm publish --access public    # prepack runs build + types
+#   git push --follow-tags
+#
+# This workflow is a spare. It fires only when run by hand from the Actions tab,
+# and only works once npmjs.com has Trusted Publishing configured for this
+# repository and `release.yml`, or an NPM_TOKEN secret is present.
+#
+# It deliberately does NOT trigger on a tag push: that would race the local
+# publish and fail red on a version npm already has.
+name: Release
 
 on:
-  push:
-    tags: ['v*']
+  workflow_dispatch:
 
 permissions:
-  contents: write
-  id-token: write # required for npm provenance
+  contents: read
+  id-token: write # npm provenance / Trusted Publishing
 
 jobs:
   publish:
@@ -16,19 +29,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-          registry-url: https://registry.npmjs.org
           cache: npm
+          registry-url: https://registry.npmjs.org
 
       - run: npm ci
-      - run: npm test
-      - run: npm run typecheck
-      - run: npm run lint:layers
-      - run: npm run build
-      - run: npm run types
+      - run: npm run check
 
-      # Provenance ties the published tarball to this workflow run. For a
-      # library that rewrites device firmware, being able to verify where a
-      # release came from is worth the extra step.
+      # `npm publish` runs prepack, which builds dist/ and types/.
       - run: npm publish --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

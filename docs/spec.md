@@ -1636,7 +1636,7 @@ See [publishing.md](./publishing.md) for the full account. In brief:
 | Channel | Mechanism |
 | --- | --- |
 | GitHub Pages | GitHub Actions assembles `site/` with `scripts/build-site.js` and deploys it |
-| npm | A single package, `esp-flashjs`, with `dist` split into full and core |
+| npm | A single package, `esp-flashjs`, with `dist` split into full and core. **Published from a local machine**, keeping tokens out of the repository |
 | CDN | `dist/esp-flashjs.min.js` loadable straight from jsDelivr |
 
 ---

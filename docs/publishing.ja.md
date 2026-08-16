@@ -226,26 +226,25 @@ TypeScript でソースを書くことはしないが、TS 利用者向けに `.
 ```
 
 - CI では `tsc --noEmit` で JSDoc の型検査を行う。バイナリ処理では引数順の取り違えや `await` 忘れが例外にならず、静かに壊れたバイナリを書き込む形で表面化するため、この検査には価値がある。
-- リリース時のみ `npm run types` で `types/` を生成する。**生成物はコミットしない。**
+- `types/` の生成は `tsconfig.types.json`（`rootDir: src`）で行う。検査用の `tsconfig.json` は `web/` も含むため、そのまま使うと `types/src/index.d.ts` に出力されてしまい、`package.json` の `types` が指す `types/index.d.ts` ができない。
+- 生成は `prepack` が `npm publish` の中で自動実行する。**生成物はコミットしない。**
 
 ### 3.5 公開フロー
 
-`.github/workflows/release.yml` で `v*` タグのプッシュをトリガに公開する。
+**npm への公開は手元のマシンから行う。** トークンをリポジトリに置かないため。
 
-```yaml
-on:
-  push:
-    tags: ['v*']
-permissions:
-  contents: write
-  id-token: write        # npm provenance に必要
+```sh
+npm version patch              # preversion で check、VERSION 定数も自動同期
+npm publish --access public    # prepack が build + types を実行
+git push --follow-tags
 ```
 
-手順: `npm ci` → `npm test` → `npm run typecheck` → `npm run build` → `npm run types` → `npm publish --provenance --access public`
+`.github/workflows/release.yml` は残してあるが `workflow_dispatch` のみで、タグ push では発火しない。ローカル公開と衝突して必ず失敗するためである。CI から公開したくなった場合は Trusted Publishing（OIDC）を設定して手動実行する。
 
-- **`--provenance` を使う。** ハードウェアを書き換えるライブラリなので、供給元が GitHub Actions であることを npm 上で検証可能にしておく価値は高い。
-- npm の Trusted Publishing（OIDC）を設定し、長期トークンをリポジトリに置かない。
-- バージョンは semver。`0.x` の間は破壊的変更を minor で入れてよいこととし、README に明記する。
+- Actions から公開する場合は **`--provenance` を使う。** ハードウェアを書き換えるライブラリなので、供給元が検証可能であることには価値がある。
+- semver。`0.x` の間は破壊的変更を minor で入れてよいこととし、README に明記する。
+
+手順の詳細は [release.ja.md](./release.ja.md)。
 
 ---
 
@@ -304,6 +303,7 @@ CDN のサンプルコードでは**必ずバージョンを固定**する。バ
 - [ ] `npm view esp-flashjs` で名前の空きを確認
 - [ ] 絶対パス（`src="/`、`from '/`）が 1 つもない — grep で確認
 - [ ] Settings → Pages → Source = GitHub Actions
+- [ ] `npm login` 済みで、npm アカウントの 2FA が有効
 - [ ] `npm run build:site` の出力を `npm run dev` 相当で開いて動作確認
 - [ ] Pages 上で Chrome から実機接続まで通ることを手動確認
 - [ ] Firefox / Safari で開いて、Binary モードが動き、接続 UI が「非対応」と明示されることを確認

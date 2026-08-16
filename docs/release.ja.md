@@ -2,107 +2,73 @@
 
 [English](./release.md) · **日本語**
 
-npm への公開と GitHub Pages の更新。
+npm への公開は**手元のマシンから**行います。トークンをリポジトリに置かないためです。
 
 関連文書: [開発ガイド](./development.ja.md) / [CI](./ci.ja.md) / [配布方法](./publishing.ja.md)
 
 ---
 
-## 1. 全体像
+## 1. 毎回のリリース（これをコピペ）
 
-公開先は 2 つあり、**トリガが別**です。
-
-| 公開先 | トリガ | 頻度 |
-| --- | --- | --- |
-| **GitHub Pages** | `main` への push | 毎回自動 |
-| **npm** | `v*` タグの push | リリース時のみ |
-
-つまり `main` にマージすればサイトは勝手に最新になりますが、npm には出ません。npm への公開は必ずタグを打つという明示的な操作を要します。
-
----
-
-## 2. バージョニング
-
-semver に従います。
-
-**`0.x` の間は、破壊的変更を minor で入れてよい**こととします（`0.1.0` → `0.2.0`）。API はまだ固まっていません。この方針は README にも明記してあります。
-
-`1.0.0` は、以下がすべて満たされてからにします。
-
-- 主要チップで実機検証が済んでいる
-- NVS の編集と書き戻し（Phase 2）が動いている
-- 公開 API を破壊的に変えたい箇所が残っていない
-
-| 変更 | 上げ方（0.x） | 上げ方（1.0 以降） |
-| --- | --- | --- |
-| バグ修正 | patch | patch |
-| 機能追加 | minor | minor |
-| 破壊的変更 | minor | major |
-
----
-
-## 3. 初回リリースの準備
-
-一度だけ必要な作業です。2 回目以降は [4 章](#4-リリース手順)へ。
-
-### 3.1 パッケージ名を確認する
+`main` がクリーン（コミット漏れなし）であることを確認してから:
 
 ```sh
-npm view esp-flashjs
+npm version patch              # 修正なら patch / 機能追加なら minor / 破壊的変更なら major
+npm publish --access public    # 2FA のコードを聞かれたら入力
+git push --follow-tags
 ```
 
-`404` なら空いています。誰かが取っていたら名前を決め直し、`package.json` の `name`、README の import 例、CDN の URL をすべて更新してください。
+これだけです。各コマンドが自動でやること:
 
-### 3.2 npm に最初の版を出す
-
-Trusted Publishing は既存パッケージにしか設定できないので、初回だけ手元から公開します。
-
-```sh
-npm login
-npm run check && npm run build && npm run types
-npm publish --access public
-```
-
-### 3.3 Trusted Publishing を設定する
-
-npmjs.com のパッケージページ → Settings → Trusted Publisher で、以下を登録します。
-
-| 項目 | 値 |
+| コマンド | 自動で走るもの |
 | --- | --- |
-| Provider | GitHub Actions |
-| Repository | `tanakamasayuki/esp-flashjs` |
-| Workflow filename | `release.yml` |
+| `npm version <ver>` | ① `preversion` = `npm run check`（テスト・型・レイヤ・ロケール。**失敗するとバージョンは作られない**）② `scripts/sync-version.js` が `src/index.js` の `VERSION` 定数を同期 ③ コミット + `v*` タグ作成 |
+| `npm publish` | `prepack` = `npm run build` + `npm run types`（`dist/` と `types/` を作ってから梱包） |
+| `git push --follow-tags` | コミットとタグを push。Pages が自動デプロイ。**release.yml は発火しない**（手動実行専用の予備） |
 
-これで長期トークンをリポジトリに置かずに済みます。設定しない場合は、npm の Automation トークンを `NPM_TOKEN` シークレットとして登録してください（[CI 5.2](./ci.ja.md#52-npm-への公開)）。
+バージョンの選び方:
 
-### 3.4 GitHub Pages を有効にする
+| 変更内容 | コマンド |
+| --- | --- |
+| バグ修正・ドキュメントのみ | `npm version patch` |
+| 後方互換の機能追加 | `npm version minor` |
+| 破壊的変更（API の変更・削除） | `npm version major` |
 
-**Settings → Pages → Source** を **「GitHub Actions」** に変更します。既定のままだと、ワークフローは成功するのに何も公開されません。
+`0.x` の間は、**破壊的変更を minor で入れてよい**こととします（`0.1.0` → `0.2.0`）。API はまだ固まっていません。この方針は README にも明記してあります。
 
 ---
 
-## 4. リリース手順
+## 2. 何が自動で、何が手動か
 
-### 4.1 リリース前チェック
+push しても npm には出ません。**npm への公開はローカルでの `npm publish` だけ**が経路です。
+
+| 対象 | トリガ | 実行される場所 |
+| --- | --- | --- |
+| **npm** | `npm publish` | **手元のマシン** |
+| **GitHub Pages** | `main` への push | GitHub Actions（自動） |
+| **CI（検査）** | push / PR | GitHub Actions（自動） |
+
+`release.yml` はタグ push では動きません。ローカル公開と衝突して、npm が既に持っているバージョンで赤くなるのを避けるためです。CI から公開したくなった場合は [6 章](#6-ci-から公開したくなったら)を参照してください。
+
+---
+
+## 3. リリース前に手で見ておくこと
+
+`npm version` が `npm run check` を走らせるので、テスト・型・レイヤ・ロケールは自動です。それでは拾えないものだけ確認します。
+
+- [ ] `git status` がクリーン
+- [ ] README（英日）の**対応チップ表**を更新した（実機で確認できたものだけ「済」にする）
+- [ ] README の Phase 進捗が実態と合っている
+- [ ] 破壊的変更があれば README に書いた
+- [ ] README と `examples/` の **CDN URL のバージョン**を上げた
 
 ```sh
-git switch main && git pull
-npm ci
-npm run check && npm run build && npm run build:site
+grep -rn "esp-flashjs@[0-9]" README.md README.ja.md examples/ docs/
 ```
 
-`npm ci` を使うのは、`package-lock.json` の通りに入れるためです。ローカルに残った古い依存で確認しても意味がありません。
+古い版を指したままだと、新機能を試そうとした人が古いコードを読み込みます。
 
-確認すること:
-
-- [ ] `main` が最新で、作業中の変更が残っていない（`git status` がクリーン）
-- [ ] `npm run check` が通る
-- [ ] 変更点が README に反映されている（対応チップ、Phase の進捗、API の変更）
-- [ ] 破壊的変更があれば README にその旨がある
-- [ ] 実機で確認した項目があれば、README の対応表を更新した
-- [ ] `npm pack --dry-run` の同梱ファイルが妥当（[4.2](#42-同梱物を確認する)）
-
-### 4.2 同梱物を確認する
+### 同梱物の確認
 
 ```sh
 npm pack --dry-run
@@ -112,80 +78,21 @@ npm pack --dry-run
 
 **含まれていてはいけないもの:** `web/`、`examples/`、`test/`、`site/`、`scripts/`、`docs/`
 
-npm の利用者にリファレンスアプリは不要で、パッケージを太らせるだけです。`package.json` の `files` で制御しています。
-
 `src/protocol/stub/*.json` と `dist/stub/*.json` は**含まれている必要があります**。実行時に fetch する対象なので、これが無いと Flash 読み出しが動きません。
-
-### 4.3 バージョンを上げてタグを打つ
-
-```sh
-npm version minor    # または patch / major
-```
-
-この 1 コマンドで、npm のライフサイクルにより以下が順に走ります。
-
-| 段階 | 実行されるもの | 内容 |
-| --- | --- | --- |
-| `preversion` | `npm run check` | 検査。**落ちたらここで中断**し、バージョンは上がりません |
-| — | npm 本体 | `package.json` の `version` を更新 |
-| `version` | `scripts/sync-version.js` | `src/index.js` の `VERSION` 定数を合わせ、`git add` する |
-| — | npm 本体 | コミット（メッセージは `0.2.0`）と `v0.2.0` タグの作成 |
-
-`VERSION` 定数の同期を自動化してあるのは、手作業だと必ずずれるからです。ずれると、バグ報告に添付されたログのバージョン表示が嘘になります。
-
-**手で更新が必要なもの:** README（英日）と `examples/` の CDN URL に書いたバージョン番号。古い版を指したままだと、新機能を試そうとした人が古いコードを読み込みます。
-
-```sh
-grep -rn "esp-flashjs@[0-9]" README.md README.ja.md examples/ docs/
-```
-
-### 4.4 push する
-
-```sh
-git push origin main
-git push origin --tags
-```
-
-`main` の push で Pages が、タグの push で Release が動きます。
-
-### 4.5 結果を確認する
-
-Actions タブで **Release to npm** が緑になったら:
-
-```sh
-npm view esp-flashjs version        # 新しいバージョンが出るか
-npm view esp-flashjs dist.tarball
-```
-
-CDN からも確認します（jsDelivr は数分かかることがあります）。
-
-```sh
-curl -sI https://cdn.jsdelivr.net/npm/esp-flashjs@0.2.0/dist/esp-flashjs.min.js | head -1
-```
-
-npm のパッケージページに provenance のバッジが出ていることも見てください。出ていなければ `id-token: write` か Trusted Publishing の設定に問題があります。
-
-### 4.6 GitHub Release を書く
-
-タグができているので、Releases → Draft a new release でタグを選び、変更点を書きます。ワークフローは自動生成しないので手動です。
-
-書くとよいこと:
-
-- 追加された機能
-- **破壊的変更**（`0.x` では minor に入るので、見落とされないよう目立たせる）
-- 修正されたバグ
-- 実機検証が進んだチップ
 
 ---
 
-## 5. 公開後にやること
+## 4. 公開後の確認
 
-- [ ] `https://tanakamasayuki.github.io/esp-flashjs/` が新しい版で動く
-- [ ] CDN のサンプルが動く（README のスニペットをそのまま実行してみる）
-- [ ] `npm i esp-flashjs` して `import` が通る
-- [ ] TypeScript のプロジェクトから型が引けるか（`.d.ts` が正しく出ているか）
+```sh
+npm view esp-flashjs version
+```
 
-最後の確認は捨てディレクトリで:
+- npm ページ: <https://www.npmjs.com/package/esp-flashjs>
+- CDN（反映まで数分かかることがある）: <https://cdn.jsdelivr.net/npm/esp-flashjs/dist/esp-flashjs.min.js>
+- Web アプリ: <https://tanakamasayuki.github.io/esp-flashjs/>
+
+型定義が正しく届いているかは、捨てディレクトリで:
 
 ```sh
 mkdir /tmp/check && cd /tmp/check && npm init -y
@@ -193,64 +100,74 @@ npm i esp-flashjs
 node -e "import('esp-flashjs/core').then(m => console.log(Object.keys(m).length, 'exports'))"
 ```
 
+GitHub Release（Releases → Draft a new release）はタグを選んで手で書きます。書くとよいこと: 追加機能、**破壊的変更**（`0.x` では minor に入るので目立たせる）、修正したバグ、実機検証が進んだチップ。
+
 ---
 
-## 6. 間違えたとき
+## 5. 困ったとき
 
-### 6.1 公開前に気づいた
+**`403 Two-factor authentication ... is required`**
 
-タグを push する前なら、やり直せます。
+2FA のワンタイムコードが渡っていません。`npm version` は済んでいるので publish だけやり直せば OK です。
 
 ```sh
-git tag -d v0.2.0
-git reset --hard HEAD~1     # npm version のコミットを取り消す
+npm publish --access public --otp=123456   # 6 桁は認証アプリの現在値
 ```
 
-### 6.2 公開してしまった
-
-**npm の公開は取り消せないものと考えてください。** `npm unpublish` は 72 時間以内かつ他が依存していない場合のみ可能で、同じバージョン番号は二度と使えません。
-
-**基本方針: 取り下げるより、直した版をすぐ出す。**
+**publish する前にバージョンを取り消したい**
 
 ```sh
-# 壊れた版を deprecate して、利用者に知らせる
-npm deprecate esp-flashjs@0.2.0 "Broken flash read; use 0.2.1 or later"
+git reset --hard HEAD~1      # npm version が作ったコミットを取り消す
+git tag -d v0.1.1            # タグも消す（番号は読み替え）
+```
 
-# 修正して patch を出す
+**publish してしまった版を直したい**
+
+`npm unpublish` は原則使いません（72 時間制限があり、同じ番号は二度と使えません）。修正を入れて次の版を出します。
+
+```sh
+npm deprecate esp-flashjs@0.2.0 "Broken flash read; use 0.2.1 or later"
 npm version patch
-git push origin main --tags
+npm publish --access public
+git push --follow-tags
 ```
 
 `dist-tags` の `latest` は自動的に新しい版を指すので、`npm i esp-flashjs` する人は修正版を得ます。
 
-### 6.3 Pages が壊れた
+**`npm version` が check で止まった**
 
-`main` を revert して push すれば、次のデプロイで戻ります。急ぐ場合は、直前の正常なコミットに `git revert` してから Actions の手動実行（Run workflow）で即座に再デプロイできます。
+それが仕事です。バージョンもタグも作られていないので、直してからやり直してください。
+
+**Pages が壊れた**
+
+`main` を revert して push すれば次のデプロイで戻ります。急ぐなら Actions タブから Deploy to GitHub Pages を手動実行できます。
 
 ---
 
-## 7. チェックリスト（印刷用）
+## 6. CI から公開したくなったら
 
-```text
-準備
-  [ ] main が最新でクリーン
-  [ ] npm ci
-  [ ] npm run check && npm run build && npm run build:site
-  [ ] npm pack --dry-run で同梱物を確認
-  [ ] README の対応チップ表・Phase 進捗を更新
-  [ ] README / examples の CDN バージョンを更新
+`.github/workflows/release.yml` は残してあります。`workflow_dispatch` のみなので、**Actions タブから手動実行**したときだけ動きます。
 
-リリース
-  [ ] npm version <patch|minor|major>      ← 検査と VERSION 同期は自動
-  [ ] git push origin main
-  [ ] git push origin --tags
+使うには、npmjs.com のパッケージ設定で Trusted Publishing を登録します。
 
-確認
-  [ ] Actions の Release が緑
-  [ ] Actions の Pages が緑
-  [ ] npm view esp-flashjs version
-  [ ] provenance バッジが出ている
-  [ ] Pages のサイトが動く
-  [ ] CDN の URL が引ける
-  [ ] GitHub Release に変更点を書いた
-```
+| 項目 | 値 |
+| --- | --- |
+| Provider | GitHub Actions |
+| Repository | `tanakamasayuki/esp-flashjs` |
+| Workflow filename | `release.yml` |
+
+これでトークンなしに公開でき、npm 上に provenance（GitHub Actions のこの実行から公開されたという検証可能な証明）が付きます。ハードウェアのファームウェアを書き換えるライブラリなので、供給元をたどれることには実質的な価値があります。
+
+Trusted Publishing を使わない場合は、npm の Automation トークンを `NPM_TOKEN` シークレットとして登録してください。
+
+---
+
+## 7. 初回だけの準備
+
+記録として残します。2 回目以降は不要です。
+
+1. `npm view esp-flashjs` が 404（名前が空いている）ことを確認する。誰かが取っていたら名前を決め直し、`package.json` の `name`、README の import 例、CDN URL をすべて更新する
+2. `npm login` でこのマシンを npm アカウントに紐付ける
+3. npm アカウントの 2FA（認証アプリ）を有効化する — 現在の npm は「2FA または 2FA バイパス付きトークン」なしでは publish できない
+4. **Settings → Pages → Source** を「GitHub Actions」に変更する（既定のままだと、ワークフローは成功するのに何も公開されない）
+5. `npm version 0.1.0` から [1 章](#1-毎回のリリースこれをコピペ)の 3 行を実行する
