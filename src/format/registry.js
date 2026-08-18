@@ -13,6 +13,10 @@
 import { parsePartitionTable, validatePartitionTable, PARTITION_MAGIC } from './partition.js';
 import { parseEspImage, ESP_IMAGE_MAGIC } from './image.js';
 import { parseOtaData } from './otadata.js';
+import { parseNvs } from './nvs/parse.js';
+import { parseSpiffs } from './fs/spiffs.js';
+import { parseLittlefs, LITTLEFS_MAGIC } from './fs/littlefs.js';
+import { parseFat, parseBpb } from './fs/fat.js';
 import { entropy, isUniform } from '../binary/diff.js';
 
 /**
@@ -212,14 +216,42 @@ export const partitionTableAnalyzer = {
   },
 };
 
+/**
+ * Offsets a bootloader can start at, by chip family.
+ *
+ * A dump of the boot area starts at flash 0, but the bootloader itself does
+ * not: it sits at 0x0 on the ESP32-S3 and C3, 0x1000 on the ESP32 and S2, and
+ * 0x2000 on the P4. Looking only at offset 0 therefore recognises the boot
+ * area of one chip family in three and calls the rest raw data — which is what
+ * captures from three different boards made obvious.
+ */
+export const BOOTLOADER_OFFSETS = Object.freeze([0x0, 0x1000, 0x2000]);
+
+/**
+ * @param {Uint8Array} data
+ * @returns {number} Offset of an image header, or -1.
+ */
+function findImageStart(data) {
+  for (const at of BOOTLOADER_OFFSETS) {
+    if (at + 24 > data.length) break;
+    if (data[at] !== ESP_IMAGE_MAGIC) continue;
+    // Everything before a bootloader is erased flash. Anything else means the
+    // magic byte is a coincidence rather than the start of an image.
+    if (at > 0 && !isUniform(data.subarray(0, at), 0xff)) continue;
+    return at;
+  }
+  return -1;
+}
+
 /** @type {BinaryAnalyzer} */
 export const espImageAnalyzer = {
   id: 'esp-image',
   name: 'ESP Firmware Image',
   detect(data) {
-    if (data.length < 24 || data[0] !== ESP_IMAGE_MAGIC) return { confidence: 0 };
+    const start = findImageStart(data);
+    if (start < 0) return { confidence: 0 };
     try {
-      const image = parseEspImage(data);
+      const image = parseEspImage(data.subarray(start));
       if (image.segments.length === 0) return { confidence: 0.3, reasonCode: 'noSegments' };
       return image.checksumValid
         ? { confidence: 1.0, reasonCode: 'magicAndChecksum' }
@@ -229,18 +261,19 @@ export const espImageAnalyzer = {
     }
   },
   analyze(data) {
-    const image = parseEspImage(data);
+    const start = Math.max(0, findImageStart(data));
+    const image = parseEspImage(data.subarray(start));
     /** @type {BinaryRegion[]} */
-    const regions = [{ offset: 0, length: 24, label: 'Image header', kind: 'header' }];
+    const regions = [{ offset: start, length: 24, label: 'Image header', kind: 'header' }];
     for (const seg of image.segments) {
       regions.push({
-        offset: seg.fileOffset - 8,
+        offset: start + seg.fileOffset - 8,
         length: 8,
         label: `Segment ${seg.index} header`,
         kind: 'header',
       });
       regions.push({
-        offset: seg.fileOffset,
+        offset: start + seg.fileOffset,
         length: seg.length,
         label: `Segment ${seg.index} @ 0x${seg.loadAddress.toString(16)}`,
         kind: 'data',
@@ -248,7 +281,7 @@ export const espImageAnalyzer = {
     }
     if (image.hashAppended && image.sha256) {
       regions.push({
-        offset: image.imageLength - 32,
+        offset: start + image.imageLength - 32,
         length: 32,
         label: 'SHA-256',
         kind: 'header',
@@ -260,6 +293,7 @@ export const espImageAnalyzer = {
       confidence: image.checksumValid ? 1.0 : 0.5,
       metadata: {
         chip: image.chipName,
+        imageOffset: start,
         entryPoint: image.entryPoint,
         segments: image.segments.length,
         imageLength: image.imageLength,
@@ -323,13 +357,185 @@ export const otaDataAnalyzer = {
  * @type {Record<string, {format: string, phase: number}>}
  */
 export const UNIMPLEMENTED_SUBTYPE_FORMATS = {
-  nvs: { format: 'nvs', phase: 2 },
+  // Encrypted key material; there is nothing readable to show even in principle.
   nvs_keys: { format: 'nvs-keys', phase: 2 },
-  spiffs: { format: 'spiffs', phase: 3 },
-  littlefs: { format: 'littlefs', phase: 4 },
-  fat: { format: 'fat', phase: 4 },
   coredump: { format: 'coredump', phase: 4 },
   phy: { format: 'phy-init', phase: 4 },
+};
+
+
+/**
+ * Whether a buffer holds nothing at all.
+ *
+ * Analyzers that lean on the partition subtype must check this first. A blank
+ * `nvs` partition is still an `nvs` partition as far as the table is
+ * concerned, so the subtype hint alone would have them claim erased flash with
+ * high confidence and report it as a filesystem containing no files — which
+ * reads as "empty" rather than as "never formatted".
+ *
+ * @param {Uint8Array} data
+ * @returns {boolean}
+ */
+function isBlank(data) {
+  return isUniform(data, 0xff) || isUniform(data, 0x00);
+}
+
+/**
+ * Turns a parsed filesystem into the shape the inspector wants.
+ *
+ * @param {import('./fs/types.js').FsImage} image
+ * @param {number} confidence
+ * @returns {any}
+ */
+function filesystemResult(image, confidence) {
+  const files = image.files.filter((f) => !f.directory);
+  return {
+    type: image.type,
+    confidence,
+    metadata: {
+      files: files.length,
+      directories: image.files.length - files.length,
+      bytes: files.reduce((sum, f) => sum + f.size, 0),
+      ...image.geometry,
+    },
+    // One region per file, so a hex view can show where each one lives. Files
+    // are scattered across the image rather than laid out in order, which is
+    // precisely what makes them hard to find by eye.
+    regions: files.slice(0, 512).map((f) => ({
+      offset: (f.pageIndices[0] ?? 0) * (image.geometry.pageSize ?? image.geometry.blockSize ?? image.geometry.bytesPerSector ?? 1),
+      length: f.size,
+      label: f.path,
+      kind: /** @type {const} */ ('data'),
+    })),
+    issues: image.issues,
+    model: image,
+  };
+}
+
+/**
+ * NVS.
+ *
+ * There is no magic to look for, so a partition subtype of `nvs` is the strong
+ * signal and a page header that parses is the weak one.
+ *
+ * @type {BinaryAnalyzer}
+ */
+export const nvsAnalyzer = {
+  id: 'nvs',
+  name: 'NVS',
+  detect(data, ctx) {
+    if (data.length < 4096 || data.length % 4096 !== 0) return { confidence: 0 };
+    if (isBlank(data)) return { confidence: 0 };
+    if (ctx.partition?.subtypeName === 'nvs') return { confidence: 0.9, reasonCode: 'subtypeHint' };
+    const store = parseNvs(data);
+    if (store.entries.length === 0) return { confidence: 0 };
+    return { confidence: 0.4, reasonCode: 'entriesFound' };
+  },
+  analyze(data, ctx) {
+    const store = parseNvs(data);
+    return {
+      type: 'nvs',
+      confidence: ctx.partition?.subtypeName === 'nvs' ? 0.9 : 0.4,
+      metadata: {
+        entries: store.entries.length,
+        erasedEntries: store.erasedEntries.length,
+        namespaces: store.namespaces.length,
+        pages: store.pages.length,
+      },
+      regions: store.pages
+        .filter((page) => page.stateName !== 'uninitialized')
+        .map((page) => ({
+          offset: page.index * 4096,
+          length: 4096,
+          label: `Page ${page.index} (${page.stateName}, seq ${page.seqNo}, ${page.usedEntries} entries)`,
+          kind: /** @type {const} */ ('entry'),
+        })),
+      issues: store.issues,
+      model: store,
+    };
+  },
+};
+
+/**
+ * LittleFS. The only one of the three filesystems with a real magic string.
+ *
+ * @type {BinaryAnalyzer}
+ */
+export const littlefsAnalyzer = {
+  id: 'littlefs',
+  name: 'LittleFS',
+  detect(data) {
+    if (isBlank(data)) return { confidence: 0 };
+    // The superblock name sits at offset 8 of whichever block of the first
+    // metadata pair is current, and both blocks carry it after a format.
+    for (const blockSize of [4096, 8192, 512, 256]) {
+      for (const block of [0, 1]) {
+        const at = block * blockSize + 8;
+        if (at + LITTLEFS_MAGIC.length > data.length) continue;
+        let match = true;
+        for (let i = 0; i < LITTLEFS_MAGIC.length; i++) {
+          if (data[at + i] !== LITTLEFS_MAGIC.charCodeAt(i)) { match = false; break; }
+        }
+        if (match) return { confidence: 0.95, reasonCode: 'superblockMagic' };
+      }
+    }
+    return { confidence: 0 };
+  },
+  analyze(data) {
+    return filesystemResult(parseLittlefs(data), 0.95);
+  },
+};
+
+/**
+ * FAT, as ESP-IDF writes it: behind a wear-levelling layer.
+ *
+ * @type {BinaryAnalyzer}
+ */
+export const fatAnalyzer = {
+  id: 'fat',
+  name: 'FAT',
+  detect(data) {
+    if (isBlank(data)) return { confidence: 0 };
+    // parseBpb checks far more than the 0x55AA signature, which on its own
+    // turns up in plenty of unrelated data.
+    return parseBpb(data.subarray(0, 4096))
+      ? { confidence: 0.9, reasonCode: 'bootSector' }
+      : { confidence: 0 };
+  },
+  analyze(data) {
+    return filesystemResult(parseFat(data), 0.9);
+  },
+};
+
+/**
+ * SPIFFS.
+ *
+ * Nothing in a SPIFFS image identifies it, and its page and block sizes are
+ * not recorded either — so detection leans on the partition subtype, and
+ * falls back to whether a plausible geometry finds intact files.
+ *
+ * @type {BinaryAnalyzer}
+ */
+export const spiffsAnalyzer = {
+  id: 'spiffs',
+  name: 'SPIFFS',
+  detect(data, ctx) {
+    if (isBlank(data)) return { confidence: 0 };
+    if (ctx.partition?.subtypeName === 'spiffs') {
+      return { confidence: 0.85, reasonCode: 'subtypeHint' };
+    }
+    // Only the default geometry here: sweeping five of them is too much work
+    // for a detection pass that runs for every analyzer.
+    const image = parseSpiffs(data, { detectGeometry: false });
+    const intact = image.files.filter((f) => f.complete).length;
+    return intact > 0 ? { confidence: 0.5, reasonCode: 'filesFound' } : { confidence: 0 };
+  },
+  analyze(data, ctx) {
+    return filesystemResult(
+      parseSpiffs(data),
+      ctx.partition?.subtypeName === 'spiffs' ? 0.85 : 0.5,
+    );
+  },
 };
 
 /**
@@ -401,4 +607,8 @@ function readU16(data, offset) {
 registerAnalyzer(partitionTableAnalyzer);
 registerAnalyzer(espImageAnalyzer);
 registerAnalyzer(otaDataAnalyzer);
+registerAnalyzer(nvsAnalyzer);
+registerAnalyzer(littlefsAnalyzer);
+registerAnalyzer(fatAnalyzer);
+registerAnalyzer(spiffsAnalyzer);
 registerAnalyzer(rawAnalyzer);

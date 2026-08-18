@@ -15,11 +15,14 @@ import { readFileSync, existsSync } from 'node:fs';
 
 import { parseSpiffs, spiffsLookupPages, SPIFFS_FLAG } from '../src/format/fs/spiffs.js';
 
+/** The size the provisioning sketch writes to /big.bin on every filesystem. */
+const BIG_FILE = 20000;
+
 const CHIPS = ['esp32', 'esp32s3', 'esp32p4'];
 
 /** What the provisioning sketch writes to every filesystem. */
 const EXPECTED = [
-  { path: '/big.bin', size: 4096 },
+  { path: '/big.bin', size: BIG_FILE },
   { path: '/empty.txt', size: 0 },
   { path: '/hello.txt', size: 18 },
   { path: '/sub/nested.txt', size: 7 },
@@ -72,7 +75,7 @@ for (const chip of CHIPS) {
     const big = parseSpiffs(data).files.find((f) => f.path === '/big.bin');
     assert.ok(big);
     const bytes = big.read();
-    assert.equal(bytes.length, 4096);
+    assert.equal(bytes.length, BIG_FILE);
     assert.ok(
       big.pageIndices.length > 10,
       'a 4 KB file should occupy many 251-byte pages, so ordering matters',

@@ -152,6 +152,14 @@ export {
   LFS_TYPE,
   LITTLEFS_MAGIC,
 } from './format/fs/littlefs.js';
+export {
+  parseFat,
+  parseBpb,
+  readFatEntry,
+  wlMapSector,
+  FAT_ATTR,
+  FAT_ATTR_LONG_NAME,
+} from './format/fs/fat.js';
 
 /* Analyzer registry ------------------------------------------------------- */
 export {
@@ -164,6 +172,10 @@ export {
   partitionTableAnalyzer,
   espImageAnalyzer,
   otaDataAnalyzer,
+  nvsAnalyzer,
+  spiffsAnalyzer,
+  littlefsAnalyzer,
+  fatAnalyzer,
   rawAnalyzer,
   CONFIDENCE_THRESHOLD,
 } from './format/registry.js';

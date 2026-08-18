@@ -35,7 +35,10 @@ static const uint16_t SMALL_BLOB = 64;
 // The sizes below cost roughly 330 of 504, leaving the erased entries in place
 // while still crossing every boundary that matters.
 static const uint16_t BIG_BLOB = 5000;  // > 4032, so still BLOB_IDX + chunks
-static const uint16_t MANY_KEYS = 150;  // > 126 entries, so pages must spill
+static const uint16_t MANY_KEYS = 150;
+
+/** Bytes in /big.bin, on every filesystem. See writeTree for why this size. */
+static const uint16_t BIG_FILE = 20000;
 
 static uint8_t bigBlob[BIG_BLOB];
 
@@ -114,10 +117,17 @@ static void writeTree(fs::FS &fs, const char *label) {
   f.print('\n');
   f.close();
 
-  // Larger than one page, so the file spans several blocks.
+  // Sized to force every format to chain storage units together.
+  //
+  // 4096 bytes was not enough: FAT here uses 4096-byte clusters and LittleFS
+  // 4096-byte blocks, so the file fit in exactly one of each and the chain
+  // following — the most error-prone part of all three parsers — was never
+  // exercised. A FAT12 entry read as whole bytes instead of twelve bits still
+  // passed. At 20000 bytes it spans five FAT clusters, five LittleFS blocks
+  // through a real skip-list, and eighty SPIFFS pages.
   f = fs.open("/big.bin", FILE_WRITE);
   if (f) {
-    for (uint16_t i = 0; i < 4096; i++) f.write((uint8_t)(i & 0xff));
+    for (uint16_t i = 0; i < BIG_FILE; i++) f.write((uint8_t)(i & 0xff));
     f.close();
   }
 

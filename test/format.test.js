@@ -431,22 +431,25 @@ test('otadata tells "never written" apart from "corrupt"', () => {
 });
 
 test('an unparsed partition is named from its subtype, not left as "raw"', () => {
-  // NVS parsing is Phase 2. Until then the analyzer must still say what the
-  // data is, because the partition table already told us.
+  // Core dumps are still unparsed. The analyzer must say so rather than shrug,
+  // because the partition table already told us what the region is.
   const data = new Uint8Array(0x5000).fill(0xff);
   for (let i = 0; i < 0x1000; i += 32) data[i] = 0x01;
 
-  const nvs = part('nvs', PARTITION_TYPE.DATA, 0x02, 0x9000, 0x5000);
-  const result = analyzeBinary(data, { partition: nvs });
+  const coredump = part('coredump', PARTITION_TYPE.DATA, 0x03, 0x9000, 0x5000);
+  const result = analyzeBinary(data, { partition: coredump });
 
-  assert.equal(result.metadata.expectedFormat, 'nvs');
-  assert.equal(result.metadata.expectedPhase, 2);
+  assert.equal(result.metadata.expectedFormat, 'coredump');
+  assert.equal(result.metadata.expectedPhase, 4);
   assert.equal(result.metadata.contents, 'data');
   assert.ok(result.issues.some((i) => i.code === 'analyze.notImplemented'));
 });
 
 test('an empty partition is not reported as an unimplemented format', () => {
-  // Nothing is there to parse, so "NVS support is missing" would be noise.
+  // Nothing is there to parse, so "support is missing" would be noise. This
+  // also pins that an analyzer leaning on the subtype does not claim erased
+  // flash: an "NVS with no entries" and an unformatted partition look the same
+  // in a summary, and only one of them is a filesystem.
   const erased = new Uint8Array(0x5000).fill(0xff);
   const nvs = part('nvs', PARTITION_TYPE.DATA, 0x02, 0x9000, 0x5000);
   const result = analyzeBinary(erased, { partition: nvs });

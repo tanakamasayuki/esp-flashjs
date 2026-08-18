@@ -16,11 +16,14 @@ import { readFileSync, existsSync } from 'node:fs';
 
 import { parseLittlefs, ctzIndexOf, ctzPointerCount, LFS_TYPE } from '../src/format/fs/littlefs.js';
 
+/** The size the provisioning sketch writes to /big.bin on every filesystem. */
+const BIG_FILE = 20000;
+
 const CHIPS = ['esp32', 'esp32s3', 'esp32p4'];
 
 /** What the provisioning sketch writes. LittleFS keeps the directory itself. */
 const EXPECTED = [
-  { path: '/big.bin', size: 4096, directory: false },
+  { path: '/big.bin', size: BIG_FILE, directory: false },
   { path: '/empty.txt', size: 0, directory: false },
   { path: '/hello.txt', size: 20, directory: false },
   { path: '/sub', size: 0, directory: true },
@@ -76,7 +79,7 @@ for (const chip of CHIPS) {
     const big = byPath.get('/big.bin');
     assert.ok(big);
     const bytes = big.read();
-    assert.equal(bytes.length, 4096);
+    assert.equal(bytes.length, BIG_FILE);
     for (let i = 0; i < bytes.length; i++) {
       assert.equal(bytes[i], i & 0xff, `byte ${i}`);
     }
