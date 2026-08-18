@@ -313,6 +313,26 @@ export const otaDataAnalyzer = {
 };
 
 /**
+ * Formats we can name from a partition subtype but cannot yet parse.
+ *
+ * Knowing "this is NVS, we just do not read NVS yet" is a different answer from
+ * "we have no idea what this is", and the partition table already tells us
+ * which one applies. Reporting them the same way wastes information the device
+ * handed us.
+ *
+ * @type {Record<string, {format: string, phase: number}>}
+ */
+export const UNIMPLEMENTED_SUBTYPE_FORMATS = {
+  nvs: { format: 'nvs', phase: 2 },
+  nvs_keys: { format: 'nvs-keys', phase: 2 },
+  spiffs: { format: 'spiffs', phase: 3 },
+  littlefs: { format: 'littlefs', phase: 4 },
+  fat: { format: 'fat', phase: 4 },
+  coredump: { format: 'coredump', phase: 4 },
+  phy: { format: 'phy-init', phase: 4 },
+};
+
+/**
  * Fallback analyzer. Always succeeds, never claims to understand the data.
  * @type {BinaryAnalyzer}
  */
@@ -322,7 +342,7 @@ export const rawAnalyzer = {
   detect() {
     return { confidence: CONFIDENCE_THRESHOLD - 0.01 };
   },
-  analyze(data) {
+  analyze(data, ctx = {}) {
     /** @type {Issue[]} */
     const issues = [];
     const allErased = isUniform(data, 0xff);
@@ -337,6 +357,19 @@ export const rawAnalyzer = {
       issues.push({ level: 'warning', code: 'analyze.possiblyEncrypted', params: { entropy: h } });
     }
 
+    // The partition table often tells us what this was meant to be, even when
+    // no analyzer can read it yet.
+    const expected = ctx.partition
+      ? UNIMPLEMENTED_SUBTYPE_FORMATS[ctx.partition.subtypeName]
+      : undefined;
+    if (expected && !allErased && !allZero) {
+      issues.push({
+        level: 'warning',
+        code: 'analyze.notImplemented',
+        params: { format: expected.format, phase: expected.phase },
+      });
+    }
+
     return {
       type: likelyEncrypted ? 'encrypted?' : 'raw',
       confidence: 0,
@@ -346,6 +379,9 @@ export const rawAnalyzer = {
         allErased,
         allZero,
         encryptionState: likelyEncrypted ? 'possibly-encrypted' : 'unknown',
+        expectedFormat: expected?.format ?? null,
+        expectedPhase: expected?.phase ?? null,
+        contents: allErased ? 'erased' : allZero ? 'zeroed' : 'data',
       },
       regions: [],
       issues,

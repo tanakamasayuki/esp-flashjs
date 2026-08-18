@@ -326,7 +326,12 @@ export class EspInspector extends HTMLElement {
     if (analysis) {
       const summary = document.createElement('p');
       summary.className = 'summary';
-      summary.textContent = `${t(`analyze.type.${analysis.type}`)} · ${t('inspector.confidence')} ${Math.round(analysis.confidence * 100)}%`;
+      const expected = /** @type {string|null} */ (analysis.metadata.expectedFormat ?? null);
+      summary.textContent = expected
+        ? // The partition table says what this is; saying "raw binary, 0%" when
+          // we already know it is NVS throws that away.
+          `${t(`analyze.format.${expected}`)} — ${t('analyze.unsupportedShort')}`
+        : `${t(`analyze.type.${analysis.type}`)} · ${t('inspector.confidence')} ${Math.round(analysis.confidence * 100)}%`;
       container.append(summary);
 
       if (analysis.type === 'partition-table') {
@@ -338,6 +343,8 @@ export class EspInspector extends HTMLElement {
         );
       } else if (analysis.type === 'esp-image') {
         container.append(imageDetails(analysis, target.partition));
+      } else if (analysis.type === 'raw' || analysis.type === 'encrypted?') {
+        container.append(rawSummary(analysis));
       } else {
         const entries = Object.entries(analysis.metadata).map(
           ([key, value]) => /** @type {[string, string]} */ ([key, formatValue(value)]),
@@ -531,6 +538,38 @@ function imageDetails(analysis, partition) {
     const free = partition.size - image.imageLength;
     const percent = Math.round((free / partition.size) * 100);
     rows.push([t('image.freeSpace'), `${formatByteSize(free)} (${percent}%)`]);
+  }
+  return definitionList(rows);
+}
+
+/**
+ * Presents an unparsed buffer in terms someone can act on.
+ *
+ * The internal metadata keys (`allErased`, `encryptionState`, …) answer the
+ * analyzer's questions, not the user's. What they want to know is whether
+ * there is anything in there and why it is not being read.
+ *
+ * @param {import('../esp-flashjs.js').AnalysisResult} analysis
+ * @returns {HTMLElement}
+ */
+function rawSummary(analysis) {
+  const m = analysis.metadata;
+  const contents = /** @type {string} */ (m.contents ?? 'data');
+  const entropyValue = typeof m.entropy === 'number' ? m.entropy : 0;
+
+  /** @type {Array<[string, string]>} */
+  const rows = [
+    [t('raw.contents'), t(`raw.contents.${contents}`)],
+    [t('partition.size'), formatByteSize(Number(m.length ?? 0))],
+  ];
+  // Entropy only means something when there is data to measure.
+  if (contents === 'data') {
+    rows.push([
+      t('raw.entropy'),
+      `${entropyValue.toFixed(2)} bits/byte — ${t(
+        entropyValue > 7.5 ? 'raw.entropy.high' : 'raw.entropy.normal',
+      )}`,
+    ]);
   }
   return definitionList(rows);
 }

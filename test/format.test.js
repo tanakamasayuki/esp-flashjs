@@ -429,3 +429,34 @@ test('otadata tells "never written" apart from "corrupt"', () => {
   assert.ok(broken.issues.some((i) => i.code === 'otadata.noValidSector'));
   assert.ok(!broken.issues.some((i) => i.code === 'otadata.neverWritten'));
 });
+
+test('an unparsed partition is named from its subtype, not left as "raw"', () => {
+  // NVS parsing is Phase 2. Until then the analyzer must still say what the
+  // data is, because the partition table already told us.
+  const data = new Uint8Array(0x5000).fill(0xff);
+  for (let i = 0; i < 0x1000; i += 32) data[i] = 0x01;
+
+  const nvs = part('nvs', PARTITION_TYPE.DATA, 0x02, 0x9000, 0x5000);
+  const result = analyzeBinary(data, { partition: nvs });
+
+  assert.equal(result.metadata.expectedFormat, 'nvs');
+  assert.equal(result.metadata.expectedPhase, 2);
+  assert.equal(result.metadata.contents, 'data');
+  assert.ok(result.issues.some((i) => i.code === 'analyze.notImplemented'));
+});
+
+test('an empty partition is not reported as an unimplemented format', () => {
+  // Nothing is there to parse, so "NVS support is missing" would be noise.
+  const erased = new Uint8Array(0x5000).fill(0xff);
+  const nvs = part('nvs', PARTITION_TYPE.DATA, 0x02, 0x9000, 0x5000);
+  const result = analyzeBinary(erased, { partition: nvs });
+
+  assert.equal(result.metadata.contents, 'erased');
+  assert.ok(!result.issues.some((i) => i.code === 'analyze.notImplemented'));
+});
+
+test('data with no partition context stays genuinely unknown', () => {
+  const result = analyzeBinary(pathologicalInputs().random);
+  assert.equal(result.metadata.expectedFormat, null);
+  assert.ok(!result.issues.some((i) => i.code === 'analyze.notImplemented'));
+});
