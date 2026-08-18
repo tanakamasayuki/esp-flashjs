@@ -4,7 +4,7 @@
 
 Analyzer は、あるバイナリ形式を ESP FlashJS に認識・記述させるための部品です。パーティションテーブル、ファームウェアイメージ、OTA データ、NVS、SPIFFS、LittleFS、FAT のぶんは同梱してあります。それ以外 — ベンダ固有のプロビジョニング領域、設定領域、独自ログ — は、実行時に登録するプラグインとして書けます。
 
-このページはその書き方です。型定義は [spec.ja.md §9](./spec.ja.md#9-binary-analyzer--plugin) にあります。
+このページはその書き方です。型定義は [spec.ja.md §9](./spec.ja.md#9-binary-analyzer-とプラグイン) にあります。
 
 ---
 

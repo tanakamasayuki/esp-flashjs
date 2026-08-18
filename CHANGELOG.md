@@ -78,7 +78,7 @@ library against fixtures and a mock the library itself produced.
   and Node's fetch does not implement `file:`. Outside a browser, call
   `registerStub`. See [docs/transports.md](./docs/transports.md).
 - Decrypting an encrypted region is
-  [deliberately not implemented](./docs/spec.md#95-decryption--deliberately-not-implemented).
+  [deliberately not implemented](./docs/spec.md#95-decryption-deliberately-not-implemented).
 - Verified on ESP32, ESP32-S3 and ESP32-P4. Other chips in the table are
   implemented but untested on hardware, and the README says which is which.
 

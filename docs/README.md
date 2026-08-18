@@ -4,6 +4,9 @@
 
 | Document | Contents | Audience |
 | --- | --- | --- |
+| [guide.md](./guide.md) | **Start here.** Every task, from opening a file to editing NVS on a board | Everyone |
+| [api.md](./api.md) | Every export, grouped by purpose | Everyone |
+| [troubleshooting.md](./troubleshooting.md) | Symptoms and what they usually mean | Everyone |
 | [spec.md](./spec.md) | Specification: design decisions, protocol, format layouts, safety | Implementers |
 | [development.md](./development.md) | Setup, how to write and run tests, manual hardware checklist | Contributors |
 | [analyzers.md](./analyzers.md) | Writing a binary analyzer plugin |
@@ -24,7 +27,13 @@ Where it is published:
 
 ## Where to start
 
-**Just using the library** — the [README](../README.md) is enough.
+**Using the library** — [guide.md](./guide.md), which starts from a file on
+disk and works up to editing a live device. [api.md](./api.md) is the reference
+to keep open beside it.
+
+**Something does not work** — [troubleshooting.md](./troubleshooting.md) is
+organised by symptom, and most entries exist because the obvious explanation
+turned out to be the wrong one.
 
 **Making changes** — [development.md](./development.md), then the relevant
 chapter of [spec.md](./spec.md).

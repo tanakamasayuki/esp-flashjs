@@ -76,7 +76,8 @@ CDN からならインストールも不要です。
 import { analyzeBinary, parsePartitionTable } from 'esp-flashjs/core';
 
 const result = analyzeBinary(bytes);
-console.log(result.type);        // 'partition-table' | 'esp-image' | 'otadata' | 'raw' | 'encrypted?'
+console.log(result.type);        // 'partition-table' | 'esp-image' | 'nvs' | 'spiffs' |
+                                 // 'littlefs' | 'fat' | 'otadata' | 'raw' | 'encrypted?'
 console.log(result.confidence);  // 0.0 〜 1.0
 console.log(result.regions);     // バイト範囲。Hex ビューのハイライトに使える
 console.log(result.issues);      // 見つかった問題。安定した code で返る
@@ -106,6 +107,24 @@ const table = await flash.read(0x8000, 0xc00, {
 
 await loader.disconnect();
 ```
+
+### デバイスから設定やファイルを読む
+
+```js
+import { parseNvs, parseSpiffs } from 'esp-flashjs/core';
+
+// NVS: 名前空間・キー・値、そして書き換えが残した消去済みエントリ。
+const nvs = parseNvs(await flash.read(0x9000, 0x5000));
+console.log(nvs.get('wifi', 'ssid')?.value);
+console.log(nvs.erasedEntries.length);
+
+// SPIFFS・LittleFS・FAT はすべて同じ型を返す。
+for (const file of parseSpiffs(await flash.read(0x290000, 0x50000)).files) {
+  if (!file.directory) console.log(file.path, file.size, file.read().length);
+}
+```
+
+NVS の編集と書き戻し、ファイルの取り出し、2つのイメージの比較などは、すべて**[ガイド](./docs/guide.ja.md)**にあります。眺めるだけでない用途なら、まずそちらへ。
 
 ### 読み出しに stub は必須です
 
@@ -196,6 +215,9 @@ npm への公開は手元のマシンから、コピペ 3 行で行います。[
 | 文書 | 内容 |
 | --- | --- |
 | [CHANGELOG.ja.md](./CHANGELOG.ja.md) | 変更履歴。以前どこが誤っていたかも記載 |
+| [guide.ja.md](./docs/guide.ja.md) | **ここから。** 作業単位で全部 |
+| [api.ja.md](./docs/api.ja.md) | 全エクスポートを用途別に |
+| [troubleshooting.ja.md](./docs/troubleshooting.ja.md) | 症状別。それが何を意味するか |
 | [spec.ja.md](./docs/spec.ja.md) | 仕様書。設計判断、プロトコル、各フォーマット、安全機構 |
 | [development.ja.md](./docs/development.ja.md) | 開発ガイド。セットアップ、テスト、実機チェックリスト |
 | [analyzers.ja.md](./docs/analyzers.ja.md) | Analyzer プラグインの書き方 |

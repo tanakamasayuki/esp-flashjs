@@ -92,7 +92,8 @@ release lands.
 import { analyzeBinary, parsePartitionTable } from 'esp-flashjs/core';
 
 const result = analyzeBinary(bytes);
-console.log(result.type);        // 'partition-table' | 'esp-image' | 'otadata' | 'raw' | 'encrypted?'
+console.log(result.type);        // 'partition-table' | 'esp-image' | 'nvs' | 'spiffs' |
+                                 // 'littlefs' | 'fat' | 'otadata' | 'raw' | 'encrypted?'
 console.log(result.confidence);  // 0.0 – 1.0
 console.log(result.regions);     // byte ranges, for highlighting in a hex view
 console.log(result.issues);      // problems found, as stable codes
@@ -124,6 +125,26 @@ const table = await flash.read(0x8000, 0xc00, {
 
 await loader.disconnect();
 ```
+
+### Read settings and files out of a device
+
+```js
+import { parseNvs, parseSpiffs } from 'esp-flashjs/core';
+
+// NVS: namespaces, keys, values — and the entries a rewrite left behind.
+const nvs = parseNvs(await flash.read(0x9000, 0x5000));
+console.log(nvs.get('wifi', 'ssid')?.value);
+console.log(nvs.erasedEntries.length);
+
+// SPIFFS, LittleFS and FAT all return the same shape.
+for (const file of parseSpiffs(await flash.read(0x290000, 0x50000)).files) {
+  if (!file.directory) console.log(file.path, file.size, file.read().length);
+}
+```
+
+Editing NVS and writing it back, extracting files, comparing two images and
+everything else is in **[the guide](./docs/guide.md)**, which is the place to
+start if you are doing more than looking.
 
 ### The stub is not optional for reading
 
@@ -241,6 +262,9 @@ is the index.
 | Document | Contents |
 | --- | --- |
 | [CHANGELOG.md](./CHANGELOG.md) | What changed, and what was wrong before |
+| [guide.md](./docs/guide.md) | **Start here.** Every task, worked through |
+| [api.md](./docs/api.md) | Every export, grouped by purpose |
+| [troubleshooting.md](./docs/troubleshooting.md) | Symptoms, and what they usually mean |
 | [spec.md](./docs/spec.md) | Specification: design decisions, protocol, formats, safety |
 | [development.md](./docs/development.md) | Setup, testing, hardware checklist |
 | [analyzers.md](./docs/analyzers.md) | Writing a binary analyzer plugin |

@@ -1786,7 +1786,7 @@ See [publishing.md](./publishing.md) for the full account. In brief:
 - [x] Filesystem tree with per-file extraction in the UI
 - [x] A dedicated diff view in the UI
 - [x] Refining encryption detection — entropy no longer claims encryption on its own; the chip's eFuse and the partition table decide ([9.4](#94-detecting-encryption))
-- [ ] ~~Decrypting with a supplied key~~ — feasible, deliberately deferred; the reasoning is in [9.5](#95-decryption--deliberately-not-implemented)
+- [ ] ~~Decrypting with a supplied key~~ — feasible, deliberately deferred; the reasoning is in [9.5](#95-decryption-deliberately-not-implemented)
 
 ### Phase 4 — Extensions
 

@@ -4,6 +4,9 @@
 
 | 文書 | 内容 | 主な読み手 |
 | --- | --- | --- |
+| [guide.ja.md](./guide.ja.md) | **ここから。** ファイルを開くところから実機の NVS 編集まで、作業単位で | 全員 |
+| [api.ja.md](./api.ja.md) | 全エクスポートを用途別に | 全員 |
+| [troubleshooting.ja.md](./troubleshooting.ja.md) | 症状別。それが何を意味するか | 全員 |
 | [spec.ja.md](./spec.ja.md) | 仕様書。設計判断、プロトコル、各フォーマットの構造、安全機構 | 実装者 |
 | [development.ja.md](./development.ja.md) | 開発ガイド。セットアップ、テストの書き方と走らせ方、実機での手動テスト | コントリビュータ |
 | [analyzers.ja.md](./analyzers.ja.md) | Analyzer プラグインの書き方 |
