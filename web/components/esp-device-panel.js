@@ -28,15 +28,24 @@ const TEMPLATE = `
   }
   button.secondary { background: var(--bg-button); color: var(--fg); border: 1px solid var(--border); }
   button:disabled { opacity: 0.5; cursor: not-allowed; }
-  dl {
-    display: grid;
-    grid-template-columns: max-content 1fr;
-    gap: 2px 12px;
-    margin: 10px 0 0;
+  /* Vertical space is scarce: flow the facts inline and wrap, rather than
+     spending one row per field. */
+  .facts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px 14px;
+    margin: 8px 0 0;
     font-size: 12px;
+    line-height: 1.6;
   }
-  dt { color: var(--fg-muted); }
-  dd { margin: 0; font-family: var(--mono, ui-monospace, monospace); }
+  .fact { white-space: nowrap; }
+  .fact > b {
+    font-weight: 400;
+    color: var(--fg-muted);
+    margin-right: 4px;
+  }
+  .fact > span { font-family: var(--mono, ui-monospace, monospace); }
+  .fact.wide { white-space: normal; }
   .status { color: var(--fg-muted); }
   .notice {
     margin-top: 10px;
@@ -106,29 +115,31 @@ export class EspDevicePanel extends HTMLElement {
       details.replaceChildren();
     } else {
       const d = /** @type {import('../esp-flashjs.js').DeviceInfo} */ (info);
-      const rows = [
-        [t('device.chip'), d.chip],
-        [t('device.mac'), d.mac],
-        [
-          t('device.flashSize'),
-          d.flashSize === null ? t('device.unknown') : formatByteSize(d.flashSize),
-        ],
-        [t('device.flashId'), d.flashId === null ? t('device.unknown') : toHexAddress(d.flashId, 6)],
-        [t('device.mode'), usingStub ? t('device.mode.stub') : t('device.mode.rom')],
+      /** @type {Array<[string, string, boolean]>} */
+      const facts = [
+        [t('device.chip'), d.chip, false],
+        [t('device.mac'), d.mac, false],
+        [t('device.flashSize'), d.flashSize === null ? t('device.unknown') : formatByteSize(d.flashSize), false],
+        [t('device.flashId'), d.flashId === null ? t('device.unknown') : toHexAddress(d.flashId, 6), false],
+        [t('device.mode'), usingStub ? t('device.mode.stub') : t('device.mode.rom'), false],
       ];
       if (d.features.length > 0) {
-        rows.push([t('device.features'), d.features.map((f) => t(`feature.${f}`)).join(', ')]);
+        facts.push([t('device.features'), d.features.map((f) => t(`feature.${f}`)).join(', '), true]);
       }
 
-      const dl = document.createElement('dl');
-      for (const [term, value] of rows) {
-        const dt = document.createElement('dt');
-        dt.textContent = term;
-        const dd = document.createElement('dd');
-        dd.textContent = value;
-        dl.append(dt, dd);
+      const wrap = document.createElement('div');
+      wrap.className = 'facts';
+      for (const [term, value, wide] of facts) {
+        const item = document.createElement('span');
+        item.className = wide ? 'fact wide' : 'fact';
+        const label = document.createElement('b');
+        label.textContent = term;
+        const text = document.createElement('span');
+        text.textContent = value;
+        item.append(label, text);
+        wrap.append(item);
       }
-      details.replaceChildren(dl);
+      details.replaceChildren(wrap);
     }
 
     /* Notices --------------------------------------------------------- */

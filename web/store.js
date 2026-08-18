@@ -41,9 +41,9 @@
  * @property {{size: number|null}} flash
  * @property {{table: import('./esp-flashjs.js').PartitionTable|null, source: 'device'|'file'|null}} partitions
  * @property {Map<string, 'erased'|'zeroed'|'data'|'unreadable'>} partitionStates
- * @property {{kind: 'partition'|'buffer'|'gap'|null, id: string|null}} selection
+ * @property {{kind: 'partition'|'buffer'|'region'|null, id: string|null}} selection
  * @property {Map<string, Buffer>} buffers
- * @property {{tab: 'info'|'hex'|'analyze'|'edit'|'diff'}} inspector
+ * @property {{tab: 'analyze'|'hex'}} inspector
  * @property {{active: boolean, phase: string, done: number, total: number, cancel: (() => void)|null}} busy
  * @property {LogEntry[]} log
  * @property {object|null} dialog
@@ -58,7 +58,7 @@ export function initialState() {
     partitionStates: new Map(),
     selection: { kind: null, id: null },
     buffers: new Map(),
-    inspector: { tab: 'info' },
+    inspector: { tab: 'analyze' },
     busy: { active: false, phase: '', done: 0, total: 0, cancel: null },
     log: [],
     dialog: null,

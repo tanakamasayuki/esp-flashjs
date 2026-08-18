@@ -13,6 +13,7 @@ import {
   assessRisk,
   erasePartition,
   exportBytes,
+  readFlashRegion,
   readPartition,
   select,
   setInspectorTab,
@@ -21,8 +22,16 @@ import {
 import './esp-hex-viewer.js';
 import { openConfirm } from './esp-confirm-dialog.js';
 
-/** @type {Array<'info'|'hex'|'analyze'>} */
-const TABS = ['info', 'hex', 'analyze'];
+/**
+ * Analysis comes first and carries the metadata with it.
+ *
+ * A separate "Info" tab put offset and size in front of the thing people
+ * actually open the inspector for. The details are still here, just below the
+ * analysis instead of ahead of it.
+ *
+ * @type {Array<'analyze'|'hex'>}
+ */
+const TABS = ['analyze', 'hex'];
 
 const TEMPLATE = `
 <style>
@@ -53,6 +62,9 @@ const TEMPLATE = `
   button.act.danger { border-color: var(--danger); color: var(--danger); }
   button.act.danger:hover:not(:disabled) { background: color-mix(in srgb, var(--danger) 14%, transparent); }
   .sep { width: 1px; background: var(--border); margin: 0 4px; }
+  .summary { margin: 0 0 10px; font-weight: 500; }
+  .note { margin: 10px 0 0; color: var(--fg-muted); font-size: 12px; width: 100%; }
+  .actions.danger-group { border-top: 1px solid var(--border); padding-top: 12px; margin-top: 14px; }
   ul.issues { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
   ul.issues li { padding: 6px 8px; border-radius: 4px; border-left: 3px solid var(--warn);
                  background: color-mix(in srgb, var(--warn) 10%, transparent); font-size: 12px; line-height: 1.45; }
@@ -97,7 +109,7 @@ export class EspInspector extends HTMLElement {
 
   /**
    * Resolves the selection into the bytes and metadata to display.
-   * @returns {{title: string, data: Uint8Array|null, address: number, analysis: import('../esp-flashjs.js').AnalysisResult|null, partition: import('../esp-flashjs.js').Partition|null}|null}
+   * @returns {{title: string, data: Uint8Array|null, address: number, size: number, analysis: import('../esp-flashjs.js').AnalysisResult|null, partition: import('../esp-flashjs.js').Partition|null}|null}
    */
   _target() {
     const state = store.getState();
@@ -111,14 +123,36 @@ export class EspInspector extends HTMLElement {
         title: buffer.name,
         data: buffer.data,
         address: buffer.address ?? 0,
+        size: buffer.data.length,
         analysis: buffer.analysis,
         partition: null,
       };
     }
 
-    const table = /** @type {{partitions: import('../esp-flashjs.js').Partition[]}|null} */ (
-      state.partitions.table
-    );
+    if (kind === 'region') {
+      // Encoded by the flash map as `<kind>@<offset>+<size>`.
+      const match = /^(.+)@(\d+)\+(\d+)$/.exec(id);
+      if (!match) return null;
+      const [, regionKind, offsetText, sizeText] = match;
+      const address = Number(offsetText);
+      const size = Number(sizeText);
+      const buffer = [...state.buffers.values()].find(
+        (b) => b.source === 'device' && b.address === address && b.data.length === size,
+      );
+      return {
+        title:
+          regionKind === 'unallocated'
+            ? t('flash.unallocated')
+            : t(`flash.region.${regionKind}`),
+        data: buffer?.data ?? null,
+        address,
+        size,
+        analysis: buffer?.analysis ?? null,
+        partition: null,
+      };
+    }
+
+    const table = state.partitions.table;
     const partition = table?.partitions.find((p) => p.label === id) ?? null;
     if (!partition) return null;
 
@@ -131,6 +165,7 @@ export class EspInspector extends HTMLElement {
       title: partition.label,
       data: buffer?.data ?? null,
       address: partition.offset,
+      size: partition.size,
       analysis: buffer?.analysis ?? null,
       partition,
     };
@@ -159,17 +194,11 @@ export class EspInspector extends HTMLElement {
       return;
     }
 
-    switch (state.inspector.tab) {
-      case 'hex':
-        this._renderHex(bodyEl, target);
-        break;
-      case 'analyze':
-        this._hex = null;
-        this._renderAnalysis(bodyEl, target);
-        break;
-      default:
-        this._hex = null;
-        this._renderInfo(bodyEl, target);
+    if (state.inspector.tab === 'hex') {
+      this._renderHex(bodyEl, target);
+    } else {
+      this._hex = null;
+      this._renderAnalysis(bodyEl, target);
     }
   }
 
@@ -179,7 +208,8 @@ export class EspInspector extends HTMLElement {
    */
   _renderHex(body, target) {
     if (!target.data) {
-      body.innerHTML = `<p class="empty">${escapeHtml(t('inspector.notRead'))}</p>`;
+      this._hex = null;
+      body.replaceChildren(this._notReadYet(target));
       return;
     }
     // Reuse the element across renders: rebuilding it would throw away scroll
@@ -196,10 +226,92 @@ export class EspInspector extends HTMLElement {
   }
 
   /**
+   * A region that has not been read is a dead end without a way to read it.
+   *
+   * @param {NonNullable<ReturnType<EspInspector['_target']>>} target
+   * @returns {HTMLElement}
+   */
+  _notReadYet(target) {
+    const wrap = document.createElement('div');
+    wrap.className = 'pad';
+
+    const heading = document.createElement('h3');
+    heading.textContent = target.title;
+    wrap.append(heading, this._detailList(target));
+
+    const note = document.createElement('p');
+    note.className = 'note';
+    note.textContent = t('inspector.notRead');
+    wrap.append(note);
+
+    wrap.append(this._readActions(target));
+    return wrap;
+  }
+
+  /**
+   * Read and export, available for anything with an address — partition or not.
+   *
+   * @param {NonNullable<ReturnType<EspInspector['_target']>>} target
+   * @returns {HTMLElement}
+   */
+  _readActions(target) {
+    const state = store.getState();
+    const canRead = state.device.status === 'connected' && state.device.usingStub;
+
+    const wrap = document.createElement('div');
+    wrap.className = 'actions';
+    wrap.append(
+      action(t('action.readFromDevice'), !canRead, () => {
+        if (target.partition) void readPartition(target.partition);
+        else void readFlashRegion(target.address, target.size, `${regionFileName(target)}.bin`);
+      }),
+      action(t('action.exportBinary'), target.data === null, () =>
+        exportBytes(/** @type {Uint8Array} */ (target.data), `${regionFileName(target)}.bin`),
+      ),
+    );
+    if (!canRead) {
+      const why = document.createElement('p');
+      why.className = 'note';
+      why.textContent =
+        state.device.status === 'connected' ? t('device.romModeWarning') : t('device.disconnected');
+      wrap.append(why);
+    }
+    return wrap;
+  }
+
+  /**
+   * @param {NonNullable<ReturnType<EspInspector['_target']>>} target
+   * @returns {HTMLElement}
+   */
+  _detailList(target) {
+    /** @type {Array<[string, string]>} */
+    const rows = [
+      [t('partition.offset'), toHexAddress(target.address)],
+      [t('partition.size'), `${formatByteSize(target.size)} (${toHexAddress(target.size)})`],
+      [t('partition.end'), toHexAddress(target.address + target.size)],
+    ];
+    const p = target.partition;
+    if (p) {
+      rows.push(
+        [t('partition.type'), `${p.typeName} (${p.type})`],
+        [t('partition.subtype'), `${p.subtypeName} (${toHexAddress(p.subtype, 2)})`],
+        [t('partition.flags'), toHexAddress(p.flags, 2)],
+      );
+      if (p.encrypted) rows.push([t('partition.encrypted'), 'yes']);
+    }
+    return definitionList(rows);
+  }
+
+  /**
    * @param {HTMLElement} body
    * @param {NonNullable<ReturnType<EspInspector['_target']>>} target
    */
-  _renderInfo(body, target) {
+  _renderAnalysis(body, target) {
+    if (!target.data) {
+      body.replaceChildren(this._notReadYet(target));
+      return;
+    }
+
     const container = document.createElement('div');
     container.className = 'pad';
 
@@ -207,26 +319,49 @@ export class EspInspector extends HTMLElement {
     heading.textContent = target.title;
     container.append(heading);
 
-    /** @type {Array<[string, string]>} */
-    const rows = [];
-    const p = target.partition;
-    if (p) {
-      rows.push(
-        [t('partition.offset'), toHexAddress(p.offset)],
-        [t('partition.size'), `${formatByteSize(p.size)} (${toHexAddress(p.size)})`],
-        [t('partition.end'), toHexAddress(p.offset + p.size)],
-        [t('partition.type'), `${p.typeName} (${p.type})`],
-        [t('partition.subtype'), `${p.subtypeName} (${toHexAddress(p.subtype, 2)})`],
-        [t('partition.flags'), toHexAddress(p.flags, 2)],
-        [t('partition.encrypted'), p.encrypted ? 'yes' : 'no'],
-      );
-    } else if (target.data) {
-      rows.push([t('partition.size'), formatByteSize(target.data.length)]);
-      if (target.address) rows.push([t('partition.offset'), toHexAddress(target.address)]);
-    }
-    container.append(definitionList(rows));
+    const analysis = target.analysis;
 
-    if (p) container.append(this._partitionActions(p, target.data));
+    // Analysis first — it is what the inspector is for. The offsets and sizes
+    // follow underneath.
+    if (analysis) {
+      const summary = document.createElement('p');
+      summary.className = 'summary';
+      summary.textContent = `${t(`analyze.type.${analysis.type}`)} · ${t('inspector.confidence')} ${Math.round(analysis.confidence * 100)}%`;
+      container.append(summary);
+
+      if (analysis.type === 'partition-table') {
+        container.append(
+          partitionTable(
+            /** @type {{partitions: import('../esp-flashjs.js').Partition[]}} */ (analysis.model)
+              .partitions,
+          ),
+        );
+      } else if (analysis.type === 'esp-image') {
+        container.append(imageDetails(analysis, target.partition));
+      } else {
+        const entries = Object.entries(analysis.metadata).map(
+          ([key, value]) => /** @type {[string, string]} */ ([key, formatValue(value)]),
+        );
+        if (entries.length > 0) container.append(definitionList(entries));
+      }
+
+      if (analysis.issues.length > 0) {
+        const list = document.createElement('ul');
+        list.className = 'issues';
+        for (const issue of analysis.issues) {
+          const li = document.createElement('li');
+          if (issue.level === 'error') li.className = 'error';
+          li.textContent = tIssue(issue);
+          list.append(li);
+        }
+        container.append(list);
+      }
+    }
+
+    container.append(heading2(t('inspector.details')), this._detailList(target));
+    container.append(this._readActions(target));
+    if (target.partition) container.append(this._destructiveActions(target.partition, target.data));
+
     body.replaceChildren(container);
   }
 
@@ -235,26 +370,13 @@ export class EspInspector extends HTMLElement {
    * @param {Uint8Array|null} data
    * @returns {HTMLElement}
    */
-  _partitionActions(partition, data) {
+  _destructiveActions(partition, data) {
     const state = store.getState();
+    const canRead = state.device.status === 'connected' && state.device.usingStub;
     const connected = state.device.status === 'connected';
-    const canRead = connected && state.device.usingStub;
 
     const wrap = document.createElement('div');
-    wrap.className = 'actions';
-
-    // Non-destructive actions first, then a visual break, then the ones that
-    // can brick the board.
-    wrap.append(
-      action(t('action.readPartition'), !canRead, () => void readPartition(partition)),
-      action(t('action.exportPartition'), data === null, () =>
-        exportBytes(/** @type {Uint8Array} */ (data), `${partition.label}.bin`),
-      ),
-    );
-
-    const separator = document.createElement('div');
-    separator.className = 'sep';
-    wrap.append(separator);
+    wrap.className = 'actions danger-group';
 
     /** @param {() => void} run */
     const confirmThen = (run) => {
@@ -275,72 +397,15 @@ export class EspInspector extends HTMLElement {
       action(t('action.writePartition'), !connected, () => {
         pickFile((file) =>
           file.arrayBuffer().then((buffer) => {
-            const data = new Uint8Array(buffer);
-            confirmThen(() => void writePartition(partition, data));
+            const bytes = new Uint8Array(buffer);
+            confirmThen(() => void writePartition(partition, bytes));
           }),
         );
       }, true),
       action(t('action.erase'), !canRead, () => confirmThen(() => void erasePartition(partition)), true),
     );
+    void data;
     return wrap;
-  }
-
-  /**
-   * @param {HTMLElement} body
-   * @param {NonNullable<ReturnType<EspInspector['_target']>>} target
-   */
-  _renderAnalysis(body, target) {
-    const container = document.createElement('div');
-    container.className = 'pad';
-
-    if (!target.data) {
-      body.innerHTML = `<p class="empty">${escapeHtml(t('inspector.notRead'))}</p>`;
-      return;
-    }
-
-    const analysis = target.analysis;
-    if (!analysis) {
-      body.innerHTML = `<p class="empty">${escapeHtml(t('inspector.empty'))}</p>`;
-      return;
-    }
-
-    container.append(
-      definitionList([
-        [t('inspector.format'), t(`analyze.type.${analysis.type}`)],
-        [t('inspector.confidence'), `${Math.round(analysis.confidence * 100)}%`],
-      ]),
-    );
-
-    if (analysis.type === 'partition-table') {
-      container.append(
-        heading(t('partition.section')),
-        partitionTable(
-          /** @type {{partitions: import('../esp-flashjs.js').Partition[]}} */ (analysis.model)
-            .partitions,
-        ),
-      );
-    } else if (analysis.type === 'esp-image') {
-      container.append(heading(t('analyze.type.esp-image')), imageDetails(analysis, target.partition));
-    } else {
-      const entries = Object.entries(analysis.metadata).map(
-        ([key, value]) => /** @type {[string, string]} */ ([key, formatValue(value)]),
-      );
-      if (entries.length > 0) container.append(heading(t('inspector.tab.analyze')), definitionList(entries));
-    }
-
-    if (analysis.issues.length > 0) {
-      const list = document.createElement('ul');
-      list.className = 'issues';
-      for (const issue of analysis.issues) {
-        const li = document.createElement('li');
-        if (issue.level === 'error') li.className = 'error';
-        li.textContent = tIssue(issue);
-        list.append(li);
-      }
-      container.append(list);
-    }
-
-    body.replaceChildren(container);
   }
 }
 
@@ -364,8 +429,17 @@ function definitionList(rows) {
   return dl;
 }
 
+/**
+ * @param {NonNullable<ReturnType<EspInspector['_target']>>} target
+ * @returns {string}
+ */
+function regionFileName(target) {
+  if (target.partition) return target.partition.label;
+  return `flash-${toHexAddress(target.address)}`;
+}
+
 /** @param {string} text @returns {HTMLElement} */
-function heading(text) {
+function heading2(text) {
   const h = document.createElement('h4');
   h.textContent = text;
   return h;

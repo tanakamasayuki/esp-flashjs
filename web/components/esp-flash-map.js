@@ -48,12 +48,10 @@ const TEMPLATE = `
   }
   li.gap {
     border-left-style: dashed;
-    cursor: default;
     color: var(--fg-muted);
   }
   /* Reserved by the boot process, not free space. */
   li.system {
-    cursor: default;
     border-left-style: double;
     border-left-width: 5px;
   }
@@ -139,11 +137,20 @@ export class EspFlashMap extends HTMLElement {
         li.className = isSystem ? 'system' : 'gap';
         li.style.setProperty('--kind-color', isSystem ? PALETTE.system : PALETTE.gap);
         const label = isSystem ? t(`flash.region.${entry.kind}`) : t('flash.unallocated');
+        // Every region is selectable: reading and exporting the bootloader or
+        // the space around it is a normal thing to want.
+        const id = `${entry.kind}@${entry.offset}+${entry.size}`;
+        li.setAttribute('role', 'option');
+        li.setAttribute(
+          'aria-selected',
+          String(state.selection.kind === 'region' && state.selection.id === id),
+        );
         li.innerHTML =
           `<span><span class="name">${escapeHtml(label)}</span>` +
           (isSystem ? ' <span class="locked" title="' + escapeHtml(t('flash.systemRegion')) + '">&#9888;</span>' : '') +
           `<br><span class="sub">${toHexAddress(entry.offset)}</span></span>` +
           `<span class="size">${formatByteSize(entry.size)}</span>`;
+        li.addEventListener('click', () => select('region', id));
         list.append(li);
         continue;
       }

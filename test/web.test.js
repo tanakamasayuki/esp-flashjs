@@ -36,14 +36,14 @@ test('store subscribe can fire immediately and can be cancelled', () => {
   /** @type {unknown[]} */
   const seen = [];
   const off = store.subscribe((s) => s.inspector.tab, (v) => seen.push(v), { immediate: true });
-  assert.deepEqual(seen, ['info']);
+  assert.deepEqual(seen, ['analyze'], 'analysis is the default tab, not metadata');
 
   store.setState({ inspector: { tab: 'hex' } });
-  assert.deepEqual(seen, ['info', 'hex']);
+  assert.deepEqual(seen, ['analyze', 'hex']);
 
   off();
   store.setState({ inspector: { tab: 'analyze' } });
-  assert.deepEqual(seen, ['info', 'hex'], 'no notifications after unsubscribe');
+  assert.deepEqual(seen, ['analyze', 'hex'], 'no notifications after unsubscribe');
 });
 
 test('store compares by reference so large buffers are never cloned', () => {

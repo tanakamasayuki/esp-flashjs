@@ -159,6 +159,26 @@ export async function readPartitionTable() {
 }
 
 /**
+ * Reads an arbitrary flash region into a buffer.
+ *
+ * The partition table describes neither the bootloader nor the space around
+ * it, but those are often exactly what someone wants to look at or keep a copy
+ * of, so every region on the map is readable — not just the ones with an entry.
+ *
+ * @param {number} address
+ * @param {number} size
+ * @param {string} name
+ * @returns {Promise<string|null>} The buffer id.
+ */
+export async function readFlashRegion(address, size, name) {
+  const data = await readRegion(address, size);
+  if (!data) return null;
+  const id = addBuffer({ name, data, source: 'device', address, partitionLabel: null });
+  store.log('info', 'op.readRegion', { name, address: toHexAddress(address), size: formatByteSize(size) });
+  return id;
+}
+
+/**
  * Reads the head of every partition so the map can say which are still empty.
  *
  * @param {import('./esp-flashjs.js').Partition[]} partitions
@@ -516,14 +536,14 @@ export function removeBuffer(id) {
 }
 
 /**
- * @param {'partition'|'buffer'|'gap'|null} kind
- * @param {string|null} id
+ * @param {'partition'|'buffer'|'region'|null} kind
+ * @param {string|null} id For a region: `<kind>@<offset>+<size>`.
  */
 export function select(kind, id) {
   store.setState({ selection: { kind, id } });
 }
 
-/** @param {'info'|'hex'|'analyze'|'edit'|'diff'} tab */
+/** @param {'analyze'|'hex'} tab */
 export function setInspectorTab(tab) {
   store.setState({ inspector: { tab } });
 }
