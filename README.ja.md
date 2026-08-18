@@ -195,6 +195,7 @@ npm への公開は手元のマシンから、コピペ 3 行で行います。[
 
 | 文書 | 内容 |
 | --- | --- |
+| [CHANGELOG.ja.md](./CHANGELOG.ja.md) | 変更履歴。以前どこが誤っていたかも記載 |
 | [spec.ja.md](./docs/spec.ja.md) | 仕様書。設計判断、プロトコル、各フォーマット、安全機構 |
 | [development.ja.md](./docs/development.ja.md) | 開発ガイド。セットアップ、テスト、実機チェックリスト |
 | [analyzers.ja.md](./docs/analyzers.ja.md) | Analyzer プラグインの書き方 |

@@ -62,10 +62,16 @@ fail red on a version npm already has. To publish from CI instead, see
 covered. Only the things it cannot see are left.
 
 - [ ] `git status` is clean
+- [ ] **`CHANGELOG.md` and `CHANGELOG.ja.md` have an entry for this version**,
+      with its date. `npm version` creates the tag from whatever is committed,
+      so an entry written afterwards is an entry for the wrong commit
 - [ ] The **chip support table** in both READMEs is current — mark a chip
       verified only if it actually was
 - [ ] Phase progress in the READMEs matches reality
-- [ ] Any breaking change is written up in the READMEs
+- [ ] Any breaking change is written up in the READMEs and the changelog
+- [ ] Anything the previous release got **wrong** is said plainly rather than
+      folded into "fixes". Someone on the old version needs to know whether it
+      could work at all
 - [ ] The **version in every CDN URL** in the READMEs and `examples/` is bumped
 
 ```sh

@@ -240,6 +240,7 @@ is the index.
 
 | Document | Contents |
 | --- | --- |
+| [CHANGELOG.md](./CHANGELOG.md) | What changed, and what was wrong before |
 | [spec.md](./docs/spec.md) | Specification: design decisions, protocol, formats, safety |
 | [development.md](./docs/development.md) | Setup, testing, hardware checklist |
 | [analyzers.md](./docs/analyzers.md) | Writing a binary analyzer plugin |
