@@ -22,6 +22,7 @@
  * @typedef {import('./format/partition.js').Partition} Partition
  * @typedef {import('./format/partition.js').PartitionTable} PartitionTable
  * @typedef {import('./format/partition.js').Issue} Issue
+ * @typedef {import('./format/partition.js').FlashRegion} FlashRegion
  * @typedef {import('./format/image.js').EspImage} EspImage
  * @typedef {import('./format/image.js').Segment} Segment
  * @typedef {import('./format/image.js').AppDescription} AppDescription
@@ -86,6 +87,7 @@ export {
   buildPartitionTable,
   validatePartitionTable,
   findUnallocatedRegions,
+  describeFlashLayout,
   findPartitionByLabel,
   findPartitionAt,
   typeName,

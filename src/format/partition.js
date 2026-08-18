@@ -376,6 +376,80 @@ export function findUnallocatedRegions(partitions, flashSize) {
 }
 
 /**
+ * @typedef {object} FlashRegion
+ * @property {'bootloader'|'partition-table'|'partition'|'unallocated'} kind
+ * @property {number} offset
+ * @property {number} size
+ * @property {Partition} [partition] Present when `kind` is "partition".
+ */
+
+/**
+ * Describes the whole flash, including the parts no partition entry covers.
+ *
+ * A partition table describes neither itself nor the bootloader, so treating
+ * every gap between entries as free space labels the two most dangerous
+ * regions on the device as "unallocated" — which is how a flash map ends up
+ * inviting someone to erase the bootloader. Those regions are named here
+ * instead.
+ *
+ * @param {Partition[]} partitions
+ * @param {object} [options]
+ * @param {number|null} [options.flashSize]
+ * @param {number} [options.bootloaderOffset] Chip-specific; 0x1000 on the
+ *   original ESP32, 0 on the S3 and C3, 0x2000 on the P4 and C5.
+ * @returns {FlashRegion[]} Ordered by offset, with no gaps.
+ */
+export function describeFlashLayout(partitions, { flashSize = null, bootloaderOffset = 0x1000 } = {}) {
+  /** @type {FlashRegion[]} */
+  const known = [
+    // The bootloader owns everything from its offset up to the table; the
+    // image itself is smaller, but that is the space reserved for it.
+    {
+      kind: /** @type {const} */ ('bootloader'),
+      offset: bootloaderOffset,
+      size: PARTITION_TABLE_OFFSET - bootloaderOffset,
+    },
+    {
+      kind: /** @type {const} */ ('partition-table'),
+      offset: PARTITION_TABLE_OFFSET,
+      size: PARTITION_TABLE_SIZE,
+    },
+    ...partitions.map((p) => ({
+      kind: /** @type {const} */ ('partition'),
+      offset: p.offset,
+      size: p.size,
+      partition: p,
+    })),
+  ]
+    .filter((r) => r.size > 0)
+    .sort((a, b) => a.offset - b.offset);
+
+  /** @type {FlashRegion[]} */
+  const out = [];
+  let cursor = 0;
+
+  for (const region of known) {
+    // Overlaps are reported by validatePartitionTable; here just do not let
+    // one swallow the region before it.
+    if (region.offset < cursor) {
+      cursor = Math.max(cursor, region.offset + region.size);
+      out.push(region);
+      continue;
+    }
+    if (region.offset > cursor) {
+      out.push({ kind: 'unallocated', offset: cursor, size: region.offset - cursor });
+    }
+    out.push(region);
+    cursor = region.offset + region.size;
+  }
+
+  if (flashSize !== null && cursor < flashSize) {
+    out.push({ kind: 'unallocated', offset: cursor, size: flashSize - cursor });
+  }
+  return out;
+}
+
+/**
  * @param {Partition[]} partitions
  * @param {string} label
  * @returns {Partition|undefined}

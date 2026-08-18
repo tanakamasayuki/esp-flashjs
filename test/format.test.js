@@ -7,6 +7,7 @@ import {
   buildPartitionTable,
   validatePartitionTable,
   findUnallocatedRegions,
+  describeFlashLayout,
   findPartitionAt,
   PARTITION_TABLE_SIZE,
   PARTITION_TYPE,
@@ -339,4 +340,64 @@ test('otadata analyzer uses the partition subtype as a hint', () => {
   const withHint = analyzeBinary(bytes, { partition: otadata });
   assert.equal(withHint.type, 'otadata');
   assert.equal(withHint.metadata.activeSector, 0);
+});
+
+/* -------------------------------------------------------------------------- */
+/* Flash layout                                                                */
+/* -------------------------------------------------------------------------- */
+
+test('the flash layout names the bootloader and the table, not "unallocated"', () => {
+  // The partition table describes neither itself nor the bootloader, so a
+  // naive gap calculation reports the two most dangerous regions on the chip
+  // as free space.
+  const layout = describeFlashLayout(singleAppPartitions(), {
+    flashSize: 4 * 1024 * 1024,
+    bootloaderOffset: 0x1000,
+  });
+
+  assert.deepEqual(
+    layout.slice(0, 4).map((r) => [r.kind, r.offset, r.size]),
+    [
+      ['unallocated', 0x0, 0x1000], // genuinely unused on the original ESP32
+      ['bootloader', 0x1000, 0x7000],
+      ['partition-table', 0x8000, 0xc00],
+      ['unallocated', 0x8c00, 0x400],
+    ],
+  );
+
+  // Nothing in the boot area may be described as free.
+  for (const region of layout) {
+    if (region.offset < 0x8c00 && region.kind === 'unallocated') {
+      assert.equal(region.offset, 0, `0x${region.offset.toString(16)} must not read as unallocated`);
+    }
+  }
+});
+
+test('a chip that boots from 0x0 has no leading gap', () => {
+  const layout = describeFlashLayout(singleAppPartitions(), {
+    flashSize: 4 * 1024 * 1024,
+    bootloaderOffset: 0,
+  });
+  assert.equal(layout[0].kind, 'bootloader');
+  assert.equal(layout[0].offset, 0);
+  assert.equal(layout[0].size, 0x8000);
+});
+
+test('the flash layout covers the device with no gaps or overlaps', () => {
+  const flashSize = 4 * 1024 * 1024;
+  const layout = describeFlashLayout(singleAppPartitions(), { flashSize, bootloaderOffset: 0x1000 });
+
+  let cursor = 0;
+  for (const region of layout) {
+    assert.equal(region.offset, cursor, `gap or overlap before 0x${region.offset.toString(16)}`);
+    cursor += region.size;
+  }
+  assert.equal(cursor, flashSize, 'the layout must reach the end of flash');
+});
+
+test('every partition still appears in the layout', () => {
+  const partitions = otaPartitions();
+  const layout = describeFlashLayout(partitions, { flashSize: 4 * 1024 * 1024 });
+  const named = layout.filter((r) => r.kind === 'partition').map((r) => r.partition?.label);
+  assert.deepEqual(named, partitions.map((p) => p.label));
 });

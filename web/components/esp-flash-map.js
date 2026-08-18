@@ -9,7 +9,7 @@
  */
 
 import { t, onLocaleChange } from '../i18n.js';
-import { findUnallocatedRegions, formatByteSize, toHexAddress } from '../esp-flashjs.js';
+import { describeFlashLayout, formatByteSize, toHexAddress } from '../esp-flashjs.js';
 import { store } from '../store.js';
 import { select } from '../actions.js';
 
@@ -21,6 +21,7 @@ const PALETTE = {
   fs: 'var(--map-fs)',
   data: 'var(--map-data)',
   gap: 'var(--map-gap)',
+  system: 'var(--map-system)',
 };
 
 const TEMPLATE = `
@@ -49,6 +50,12 @@ const TEMPLATE = `
     border-left-style: dashed;
     cursor: default;
     color: var(--fg-muted);
+  }
+  /* Reserved by the boot process, not free space. */
+  li.system {
+    cursor: default;
+    border-left-style: double;
+    border-left-width: 5px;
   }
   .name { font-weight: 500; }
   .sub { color: var(--fg-muted); font-size: 11px; }
@@ -101,14 +108,8 @@ export class EspFlashMap extends HTMLElement {
     }
 
     const flashSize = state.flash.size;
-    const gaps = findUnallocatedRegions(table.partitions, flashSize).map((g) => ({
-      ...g,
-      isGap: /** @type {const} */ (true),
-    }));
-    const entries = [
-      ...table.partitions.map((p) => ({ ...p, isGap: /** @type {const} */ (false) })),
-      ...gaps,
-    ].sort((a, b) => a.offset - b.offset);
+    const bootloaderOffset = state.device.info?.bootloaderOffset ?? 0x1000;
+    const entries = describeFlashLayout(table.partitions, { flashSize, bootloaderOffset });
 
     const maxRoot = Math.sqrt(Math.max(...entries.map((e) => e.size), 1));
 
@@ -119,18 +120,24 @@ export class EspFlashMap extends HTMLElement {
       const height = 22 + (Math.sqrt(entry.size) / maxRoot) * 46;
       li.style.setProperty('--row-height', `${height.toFixed(0)}px`);
 
-      if (entry.isGap) {
-        li.className = 'gap';
-        li.style.setProperty('--kind-color', PALETTE.gap);
+      if (entry.kind !== 'partition') {
+        // The bootloader and the partition table are not free space, even
+        // though no entry describes them. Showing them as "unallocated" is how
+        // someone talks themselves into erasing the bootloader.
+        const isSystem = entry.kind !== 'unallocated';
+        li.className = isSystem ? 'system' : 'gap';
+        li.style.setProperty('--kind-color', isSystem ? PALETTE.system : PALETTE.gap);
+        const label = isSystem ? t(`flash.region.${entry.kind}`) : t('flash.unallocated');
         li.innerHTML =
-          `<span><span class="name">${escapeHtml(t('flash.unallocated'))}</span>` +
+          `<span><span class="name">${escapeHtml(label)}</span>` +
+          (isSystem ? ' <span class="locked" title="' + escapeHtml(t('flash.systemRegion')) + '">&#9888;</span>' : '') +
           `<br><span class="sub">${toHexAddress(entry.offset)}</span></span>` +
           `<span class="size">${formatByteSize(entry.size)}</span>`;
         list.append(li);
         continue;
       }
 
-      const partition = /** @type {import('../esp-flashjs.js').Partition} */ (entry);
+      const partition = /** @type {import('../esp-flashjs.js').Partition} */ (entry.partition);
       li.style.setProperty('--kind-color', colorFor(partition));
       li.dataset.label = partition.label;
       li.setAttribute('role', 'option');

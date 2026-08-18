@@ -36,6 +36,7 @@
   --map-fs: #15803d;
   --map-data: #64748b;
   --map-gap: #b0b7c3;
+  --map-system: #b45309;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -68,6 +69,7 @@
     --map-fs: #4ade80;
     --map-data: #94a3b8;
     --map-gap: #4b5563;
+    --map-system: #fbbf24;
   }
 }
 
