@@ -37,6 +37,16 @@ export const CMD = {
 /** Commands whose payload is covered by the header checksum field. */
 const CHECKSUMMED = new Set([CMD.FLASH_DATA, CMD.MEM_DATA, CMD.FLASH_DEFL_DATA]);
 
+/**
+ * Size of the `length, sequence, 0, 0` prefix on every data command.
+ *
+ * The checksum covers **only the bytes after this prefix**. Including the
+ * prefix produces a packet the ROM rejects with "Invalid CRC in message",
+ * which is how this was found — on hardware, since a mock that does not verify
+ * checksums accepts either.
+ */
+export const DATA_COMMAND_HEADER_SIZE = 16;
+
 /** Commands the ROM loader does not implement. */
 export const STUB_ONLY_COMMANDS = new Set([
   CMD.ERASE_FLASH,
@@ -98,6 +108,9 @@ export function payloadChecksum(payload) {
 /**
  * Builds a request packet, ready to be SLIP-encoded.
  *
+ * For the data-carrying commands the checksum is computed over the data block
+ * alone, skipping the 16-byte header those payloads start with.
+ *
  * @param {number} command
  * @param {Uint8Array} [payload]
  * @param {number} [checksum] Overrides the computed value; rarely needed.
@@ -108,7 +121,12 @@ export function encodeRequest(command, payload = new Uint8Array(0), checksum) {
   w.u8(DIRECTION_REQUEST);
   w.u8(command);
   w.u16(payload.length);
-  w.u32(checksum ?? (CHECKSUMMED.has(command) ? payloadChecksum(payload) : 0));
+  w.u32(
+    checksum ??
+      (CHECKSUMMED.has(command)
+        ? payloadChecksum(payload.subarray(DATA_COMMAND_HEADER_SIZE))
+        : 0),
+  );
   w.bytes(payload);
   return w.toBytes();
 }

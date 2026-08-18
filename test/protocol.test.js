@@ -102,10 +102,46 @@ test('request header carries direction, opcode, size and checksum', () => {
   assert.equal(packet[4], 0);
 });
 
-test('data commands carry the payload checksum', () => {
+test('a data command checksums the data block, not the whole payload', () => {
   const data = new Uint8Array([0xaa, 0x55]);
-  const packet = encodeRequest(CMD.FLASH_DATA, flashDataPayload(data, 0));
-  assert.equal(packet[4], payloadChecksum(flashDataPayload(data, 0)));
+  const payload = flashDataPayload(data, 0); // 16-byte header + data
+  const packet = encodeRequest(CMD.FLASH_DATA, payload);
+
+  assert.equal(packet[4], payloadChecksum(data), 'must cover only the data block');
+
+  // The two are genuinely different values here, so this asserts something.
+  // Getting it wrong makes the ROM answer "Invalid CRC in message" (0x07).
+  assert.notEqual(
+    payloadChecksum(data),
+    payloadChecksum(payload),
+    'the header must change the result, otherwise the test proves nothing',
+  );
+  assert.notEqual(packet[4], payloadChecksum(payload));
+});
+
+test('a non-data command leaves the checksum field zero', () => {
+  const packet = encodeRequest(CMD.READ_REG, new Uint8Array([1, 2, 3, 4]));
+  assert.equal(packet[4], 0);
+});
+
+test('the simulated ROM rejects a wrong checksum the way hardware does', async () => {
+  const transport = new MockTransport();
+  await transport.open();
+
+  // A FLASH_DATA packet whose checksum covers the header too — the mistake
+  // that shipped in 0.1.0.
+  const data = new Uint8Array([1, 2, 3, 4]);
+  const payload = flashDataPayload(data, 0);
+  const wrong = encodeRequest(CMD.FLASH_DATA, payload, payloadChecksum(payload));
+  await transport.write(slipEncode(wrong));
+
+  const response = decodeResponse(new SlipDecoder().push(await transport.read())[0]);
+  assert.ok(response);
+  assert.equal(response.status, 1);
+  assert.equal(response.errorCode, 0x07, 'Invalid CRC in message');
+  assert.equal(transport.badChecksums, 1);
+
+  await transport.close();
 });
 
 test('payloadChecksum starts from the 0xEF seed', () => {

@@ -12,9 +12,11 @@
 import { SlipDecoder, slipEncode } from '../protocol/slip.js';
 import {
   CMD,
+  DATA_COMMAND_HEADER_SIZE,
   DIRECTION_RESPONSE,
   SYNC_PAYLOAD,
   decodeResponse,
+  payloadChecksum,
 } from '../protocol/commands.js';
 import { chipByName } from '../protocol/chips.js';
 import { md5, md5Hex } from '../binary/hash.js';
@@ -28,6 +30,9 @@ import { TransportClosedError, TransportTimeoutError } from '../util/errors.js';
  */
 
 const SPI_CMD_USR = 1 << 18;
+
+/** Commands whose checksum field the ROM validates. */
+const CHECKSUMMED = new Set([CMD.FLASH_DATA, CMD.MEM_DATA, CMD.FLASH_DEFL_DATA]);
 
 /**
  * A stub image that the mock accepts. Its contents are never executed; only
@@ -99,6 +104,8 @@ export class MockTransport {
     this.memBeginCount = 0;
     /** @type {string[]} Opcodes seen, for assertions in tests. */
     this.commandLog = [];
+    /** @type {number} Data commands rejected for a bad checksum. */
+    this.badChecksums = 0;
 
     registerStub(def.stub, MOCK_STUB);
     this.initRegisters();
@@ -218,8 +225,20 @@ export class MockTransport {
     const op = frame[1];
     const view = new DataView(frame.buffer, frame.byteOffset, frame.byteLength);
     const size = view.getUint16(2, true);
+    const declaredChecksum = view.getUint32(4, true);
     const payload = frame.subarray(8, 8 + size);
     this.commandLog.push(`0x${op.toString(16).padStart(2, '0')}`);
+
+    // The ROM checks the checksum on data commands and answers 0x07 when it is
+    // wrong. Reproducing that here is the difference between catching a
+    // miscomputed checksum in CI and finding it on a bench.
+    if (CHECKSUMMED.has(op)) {
+      const expected = payloadChecksum(payload.subarray(DATA_COMMAND_HEADER_SIZE));
+      if ((declaredChecksum & 0xff) !== expected) {
+        this.badChecksums++;
+        return this.respond(op, undefined, 0, 1, 0x07);
+      }
+    }
 
     switch (op) {
       case CMD.SYNC:
