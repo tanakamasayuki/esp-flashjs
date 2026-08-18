@@ -131,6 +131,7 @@
   "otadata.missingSector": "OTA data sector {index} is missing.",
   "partition.md5Mismatch": "Partition table checksum does not match: expected {expected}, computed {actual}.",
   "partition.empty": "No partition entries were found.",
+  "partition.rawHead": "First 16 bytes at {offset}: {bytes} — kept as a raw buffer in Files so it can be inspected.",
   "partition.tooMany": "{count} entries exceed the {max} the table can hold.",
   "partition.zeroSize": "Partition \"{label}\" has zero size.",
   "partition.appAlignment": "App partition \"{label}\" starts at {offset}, which is not a 64 KB boundary.",

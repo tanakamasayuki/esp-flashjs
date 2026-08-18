@@ -131,6 +131,7 @@
   "otadata.missingSector": "缺少 OTA 数据扇区 {index}。",
   "partition.md5Mismatch": "分区表校验和不匹配：期望 {expected}，实际 {actual}。",
   "partition.empty": "未找到任何分区条目。",
+  "partition.rawHead": "{offset} 处的前 16 字节：{bytes} — 已作为原始缓冲区保留在 Files 中，可用十六进制查看。",
   "partition.tooMany": "{count} 个条目超过了分区表上限 {max}。",
   "partition.zeroSize": "分区“{label}”的大小为 0。",
   "partition.appAlignment": "app 分区“{label}”起始于 {offset}，未对齐到 64KB 边界。",

@@ -131,6 +131,7 @@
   "otadata.missingSector": "OTA データセクタ {index} がありません。",
   "partition.md5Mismatch": "パーティションテーブルのチェックサムが一致しません。期待値 {expected}、計算値 {actual}。",
   "partition.empty": "パーティションエントリが見つかりませんでした。",
+  "partition.rawHead": "{offset} の先頭 16 バイト: {bytes} — Files に生バッファとして保持したので Hex で確認できます。",
   "partition.tooMany": "{count} 個のエントリは、テーブルの上限 {max} を超えています。",
   "partition.zeroSize": "パーティション「{label}」のサイズが 0 です。",
   "partition.appAlignment": "app パーティション「{label}」の開始位置 {offset} が 64KB 境界にありません。",

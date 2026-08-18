@@ -18,6 +18,7 @@ import {
   formatByteSize,
   parsePartitionTable,
   toHexAddress,
+  bytesToHex,
   PARTITION_TABLE_OFFSET,
   PARTITION_TABLE_SIZE,
 } from './esp-flashjs.js';
@@ -125,12 +126,33 @@ async function safeClose() {
 export async function readPartitionTable() {
   const data = await readRegion(PARTITION_TABLE_OFFSET, PARTITION_TABLE_SIZE);
   if (!data) return;
+
+  // Keep the bytes whatever happens. Spec §18: a region that cannot be parsed
+  // is still worth showing, and when the parse fails this buffer is the only
+  // way to find out why.
+  addBuffer({
+    name: 'partition-table.bin',
+    data,
+    source: 'device',
+    address: PARTITION_TABLE_OFFSET,
+    partitionLabel: null,
+  });
+
   try {
     const table = parsePartitionTable(data);
     store.setState({ partitions: { table, source: 'device' } });
     for (const issue of table.issues) logIssue(issue);
   } catch (error) {
-    store.log('error', 'error.INVALID_MAGIC', { message: /** @type {Error} */ (error).message });
+    store.log('error', 'error.INVALID_MAGIC', {
+      message: /** @type {Error} */ (error).message,
+    });
+    // The leading bytes separate the likely causes at a glance: 0xFFFF means
+    // erased flash, 0x0000 means never written, anything else means the read
+    // landed somewhere unexpected.
+    store.log('warn', 'partition.rawHead', {
+      offset: toHexAddress(PARTITION_TABLE_OFFSET),
+      bytes: bytesToHex(data.subarray(0, 16), ' '),
+    });
   }
 }
 

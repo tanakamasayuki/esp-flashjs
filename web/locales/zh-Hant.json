@@ -131,6 +131,7 @@
   "otadata.missingSector": "缺少 OTA 資料磁區 {index}。",
   "partition.md5Mismatch": "分割表檢查碼不符：預期 {expected}，實際 {actual}。",
   "partition.empty": "找不到任何分割區項目。",
+  "partition.rawHead": "{offset} 處的前 16 位元組：{bytes} — 已作為原始緩衝區保留在 Files 中，可用十六進位檢視。",
   "partition.tooMany": "{count} 個項目超過分割表上限 {max}。",
   "partition.zeroSize": "分割區「{label}」的大小為 0。",
   "partition.appAlignment": "app 分割區「{label}」起始於 {offset}，未對齊 64KB 邊界。",
