@@ -719,7 +719,7 @@ read operations.
 
 | Offset | Size | Field |
 | --- | --- | --- |
-| 0 | 2 | Magic `0xAA50` (LE: `50 AA`) |
+| 0 | 2 | Magic. **The bytes `AA 50`** (0x50AA read as a little-endian u16 — see below) |
 | 2 | 1 | Type |
 | 3 | 1 | Subtype |
 | 4 | 4 | Offset |
@@ -729,6 +729,15 @@ read operations.
 
 - MD5 checksum entry: magic `0xEBEB`, with the MD5 of everything preceding it in
   the 16 bytes from offset 16.
+
+> **Mind the magic byte order.** Espressif's `gen_esp32part.py` defines it as the
+> byte string `b"\xAA\x50"` and compares it raw, so flash carries `AA 50`, which
+> read back as a little-endian u16 is **`0x50AA`**, not `0xAA50`.
+>
+> Getting this backwards produces **a parser that only accepts the tables it
+> generated itself**. A parse/build round trip cannot detect it, because both
+> sides share the same wrong constant — which is how it shipped in v0.1.0. Keep
+> fixtures transcribed from real hardware (`test/real-hardware.test.js`).
 - The table ends with `0xFF` padding, or simply with no further entries.
 
 ### 8.2 API

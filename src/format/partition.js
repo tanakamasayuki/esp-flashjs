@@ -17,7 +17,22 @@ import { InvalidMagicError } from '../util/errors.js';
 export const PARTITION_TABLE_OFFSET = 0x8000;
 export const PARTITION_TABLE_SIZE = 0xc00;
 export const PARTITION_ENTRY_SIZE = 32;
-export const PARTITION_MAGIC = 0xaa50;
+/**
+ * Magic at the start of a partition entry, as the bytes appear on flash: AA 50.
+ *
+ * Mind the byte order. Espressif's tooling defines this as the byte string
+ * `b"\xAA\x50"` and compares it raw, so read back as a little-endian u16 it is
+ * **0x50AA, not 0xAA50**. Having it backwards yields a parser that accepts only
+ * the tables it generated itself — which is exactly what shipped in 0.1.0, and
+ * why a parse/build round trip could not detect it.
+ */
+export const PARTITION_MAGIC_BYTES = Object.freeze([0xaa, 0x50]);
+
+/** The same two bytes read as a little-endian u16. */
+export const PARTITION_MAGIC = PARTITION_MAGIC_BYTES[0] | (PARTITION_MAGIC_BYTES[1] << 8);
+
+/** Magic of the trailing MD5 entry: EB EB, a palindrome, so order is moot. */
+export const PARTITION_MD5_MAGIC_BYTES = Object.freeze([0xeb, 0xeb]);
 export const PARTITION_MD5_MAGIC = 0xebeb;
 export const MAX_PARTITIONS = 95;
 
@@ -311,7 +326,8 @@ export function buildPartitionTable(table, { md5: withMd5 = true } = {}) {
 
   for (const p of partitions) {
     writer
-      .u16(PARTITION_MAGIC)
+      .u8(PARTITION_MAGIC_BYTES[0])
+      .u8(PARTITION_MAGIC_BYTES[1])
       .u8(p.type)
       .u8(p.subtype)
       .u32(p.offset)
@@ -322,7 +338,11 @@ export function buildPartitionTable(table, { md5: withMd5 = true } = {}) {
 
   if (withMd5) {
     const digest = md5(writer.buffer.subarray(0, writer.length));
-    writer.u16(PARTITION_MD5_MAGIC).fill(14, 0xff).bytes(digest);
+    writer
+      .u8(PARTITION_MD5_MAGIC_BYTES[0])
+      .u8(PARTITION_MD5_MAGIC_BYTES[1])
+      .fill(14, 0xff)
+      .bytes(digest);
   }
 
   // Pad the remainder with 0xFF, matching erased flash.

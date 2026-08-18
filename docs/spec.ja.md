@@ -624,7 +624,7 @@ Secure Download Mode が有効なチップでは Flash 読み出し・RAM 書き
 
 | Offset | Size | Field |
 | --- | --- | --- |
-| 0 | 2 | Magic `0xAA50`（LE: `50 AA`） |
+| 0 | 2 | Magic。**バイト列で `AA 50`**（LE u16 として読むと `0x50AA`。下記参照） |
 | 2 | 1 | Type |
 | 3 | 1 | Subtype |
 | 4 | 4 | Offset |
@@ -633,6 +633,10 @@ Secure Download Mode が有効なチップでは Flash 読み出し・RAM 書き
 | 28 | 4 | Flags |
 
 - MD5 チェックサムエントリ: Magic `0xEBEB`、offset 16 以降 16 バイトが直前までのエントリの MD5。
+
+> **magic のバイト順に注意。** Espressif の `gen_esp32part.py` は `MAGIC_BYTES = b"\xAA\x50"` と**バイト列として**定義し、生のまま比較する。したがってフラッシュ上の並びは `AA 50` であり、リトルエンディアン u16 として読むと **`0x50AA`** になる（`0xAA50` ではない）。
+>
+> ここを逆にすると、**自分が生成したテーブルだけ読めるパーサ**ができあがる。parse → build のラウンドトリップは両側が同じ誤りを共有するため素通りしてしまい、v0.1.0 ではこの状態で出荷された。実機由来のバイト列を fixture に持つこと（`test/real-hardware.test.js`）。
 - 終端は `0xFF` 埋めまたはエントリなし。
 
 ### 8.2 API
