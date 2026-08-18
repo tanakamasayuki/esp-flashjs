@@ -38,11 +38,39 @@ run() { "${ESPTOOL[@]}" --port "$PORT" --baud "$BAUD" "$@"; }
 # ---------------------------------------------------------------------------
 # Identify the chip, so the output lands in a per-chip directory.
 # ---------------------------------------------------------------------------
+# esptool 4.x names its subcommands with underscores (chip_id, read_flash);
+# 5.x switched to hyphens. Probe once instead of guessing at every call.
+if "${ESPTOOL[@]}" --help 2>&1 | grep -q -- 'read-flash'; then
+  CMD_CHIP_ID=chip-id; CMD_READ_FLASH=read-flash; CMD_ERASE_FLASH=erase-flash
+else
+  CMD_CHIP_ID=chip_id; CMD_READ_FLASH=read_flash; CMD_ERASE_FLASH=erase_flash
+fi
+
+# Detection must never take the script down before it can explain itself, so
+# the output is captured whole and parsed afterwards. Piping into `head` here
+# used to raise SIGPIPE, which `pipefail` turned into a silent exit.
+detect_chip() {
+  local raw name
+  raw="$("${ESPTOOL[@]}" --port "$PORT" "$CMD_CHIP_ID" 2>&1 || true)"
+  name="$(printf '%s\n' "$raw" | awk '
+    /^Chip is /   { sub(/^Chip is /, ""); sub(/[ (].*/, ""); print; exit }
+    /^Chip type:/ { sub(/^Chip type:[ \t]*/, ""); sub(/[ (].*/, ""); print; exit }
+    /^Detecting chip type/ { line = $0; sub(/.*\.\.\.[ \t]*/, "", line);
+                             if (line != "") { print line; exit } }
+  ')"
+  if [ -z "$name" ]; then
+    printf '%s\n' "$raw" >&2
+    return 1
+  fi
+  printf '%s' "$name"
+}
+
 if [ -z "${CHIP:-}" ]; then
   echo "Detecting chip on $PORT ..."
-  CHIP="$(run chip-id 2>/dev/null | sed -n 's/^Detecting chip type\.*[[:space:]]*//p' | tail -1)"
-  [ -z "$CHIP" ] && CHIP="$(run chip-id 2>/dev/null | sed -n 's/^Chip is \([^ ]*\).*/\1/p' | tail -1)"
-  [ -z "$CHIP" ] && { echo "Could not detect the chip. Pass CHIP=esp32 explicitly." >&2; exit 1; }
+  if ! CHIP="$(detect_chip)"; then
+    echo "Could not detect the chip. Pass CHIP=esp32 explicitly." >&2
+    exit 1
+  fi
 fi
 
 # Normalize "ESP32-S3" and similar into a directory-friendly name.
@@ -81,8 +109,7 @@ for i in "${!NAMES[@]}"; do
   file="$OUT/$name.bin"
 
   printf '%-16s %-10s %-10s ' "$name" "$offset" "$size"
-  if run read-flash "$offset" "$size" "$file" >/dev/null 2>&1 ||
-     run read_flash "$offset" "$size" "$file" >/dev/null 2>&1; then
+  if run "$CMD_READ_FLASH" "$offset" "$size" "$file" >/dev/null 2>&1; then
     printf 'ok  %s bytes\n' "$(wc -c < "$file" | xargs)"
   else
     printf 'FAILED\n'

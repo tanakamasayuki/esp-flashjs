@@ -70,14 +70,39 @@ info "port $PORT"
 # ---------------------------------------------------------------------------
 log "2. Identifying the board"
 
+# esptool 4.x names its subcommands with underscores (chip_id, read_flash);
+# 5.x switched to hyphens. Probe once instead of guessing at every call.
+if "${ESPTOOL[@]}" --help 2>&1 | grep -q -- 'read-flash'; then
+  CMD_CHIP_ID=chip-id; CMD_READ_FLASH=read-flash; CMD_ERASE_FLASH=erase-flash
+else
+  CMD_CHIP_ID=chip_id; CMD_READ_FLASH=read_flash; CMD_ERASE_FLASH=erase_flash
+fi
+
+# Detection must never take the script down before it can explain itself, so
+# the output is captured whole and parsed afterwards. Piping into `head` here
+# used to raise SIGPIPE, which `pipefail` turned into a silent exit.
 detect_chip() {
-  "${ESPTOOL[@]}" --port "$PORT" chip-id 2>/dev/null ||
-    "${ESPTOOL[@]}" --port "$PORT" chip_id 2>/dev/null
+  local raw name
+  raw="$("${ESPTOOL[@]}" --port "$PORT" "$CMD_CHIP_ID" 2>&1 || true)"
+  name="$(printf '%s\n' "$raw" | awk '
+    /^Chip is /   { sub(/^Chip is /, ""); sub(/[ (].*/, ""); print; exit }
+    /^Chip type:/ { sub(/^Chip type:[ \t]*/, ""); sub(/[ (].*/, ""); print; exit }
+    /^Detecting chip type/ { line = $0; sub(/.*\.\.\.[ \t]*/, "", line);
+                             if (line != "") { print line; exit } }
+  ')"
+  if [ -z "$name" ]; then
+    printf '%s\n' "$raw" >&2
+    return 1
+  fi
+  printf '%s' "$name"
 }
 
 if [ -z "${CHIP:-}" ]; then
-  CHIP="$(detect_chip | sed -n 's/^Chip is \([A-Za-z0-9-]*\).*/\1/p' | head -1)"
-  [ -z "$CHIP" ] && die "Could not detect the chip. Pass it explicitly, e.g. CHIP=esp32"
+  if ! CHIP="$(detect_chip)"; then
+    die "Could not identify the chip on $PORT (esptool output above).
+    Common causes: another program holds the port, the board needs BOOT held
+    down, or it is not an Espressif chip. You can skip detection with CHIP=esp32."
+  fi
 fi
 SLUG="$(printf '%s' "$CHIP" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9')"
 info "chip $CHIP  (slug $SLUG)"
@@ -108,8 +133,7 @@ info "fqbn $FQBN"
 # 3. Erase, so nothing from a previous life survives into the fixture
 # ---------------------------------------------------------------------------
 log "3. Erasing flash"
-"${ESPTOOL[@]}" --port "$PORT" erase-flash 2>/dev/null ||
-  "${ESPTOOL[@]}" --port "$PORT" erase_flash
+"${ESPTOOL[@]}" --port "$PORT" "$CMD_ERASE_FLASH"
 
 # ---------------------------------------------------------------------------
 # 4. Build and upload
