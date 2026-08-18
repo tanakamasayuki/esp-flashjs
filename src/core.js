@@ -135,6 +135,17 @@ export { NvsStore, inferNvsType, sameValue } from './format/nvs/store.js';
 export { buildNvs, NVS_MIN_PAGES, NVS_MAX_CHUNK_SIZE } from './format/nvs/build.js';
 export { diffNvs, summarizeNvsDiff } from './format/nvs/diff.js';
 
+/* Filesystems -------------------------------------------------------------- */
+export {
+  parseSpiffs,
+  spiffsLookupPages,
+  SPIFFS_FLAG,
+  SPIFFS_GEOMETRIES,
+  SPIFFS_PAGE_HEADER_SIZE,
+  SPIFFS_NAME_OFFSET,
+  SPIFFS_OBJ_ID_IX_FLAG,
+} from './format/fs/spiffs.js';
+
 /* Analyzer registry ------------------------------------------------------- */
 export {
   registerAnalyzer,
