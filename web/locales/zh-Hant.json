@@ -5,11 +5,9 @@
   "app.repository": "GitHub",
   "app.docs": "文件",
   "app.examples": "範例",
-
   "browser.unsupported.title": "此瀏覽器無法連接裝置",
   "browser.unsupported.body": "與裝置通訊需要 Web Serial，目前僅 Chrome、Edge 等桌面版 Chromium 核心瀏覽器支援。您仍然可以匯入二進位檔案並離線分析。",
   "browser.insecureContext": "Web Serial 僅在安全內容中可用。請透過 HTTPS 開啟本頁，開發時可使用 http://localhost。",
-
   "device.section": "裝置",
   "device.connect": "連接",
   "device.disconnect": "中斷",
@@ -25,28 +23,23 @@
   "device.mode.rom": "ROM 載入器",
   "device.features": "功能",
   "device.unknown": "未知",
-
   "device.romModeWarning": "目前執行於 ROM 載入器。ROM 未實作讀取與抹除指令，因此無法讀取或抹除 Flash，寫入仍然可用。",
   "device.secureDownloadMode": "此晶片已啟用 Secure Download Mode，硬體層面禁止讀取 Flash 與載入 stub。",
   "device.encryptionEnabled": "已啟用 Flash 加密。分割區內容無法解析，寫入明文會使其失效。",
-
   "feature.wifi": "Wi-Fi",
   "feature.bt": "傳統藍牙",
   "feature.ble": "低功耗藍牙",
   "feature.ieee802154": "802.15.4",
-
   "flash.section": "Flash",
   "flash.map": "Flash 配置圖",
   "flash.dump": "匯出整片 Flash",
   "flash.eraseAll": "抹除整片 Flash",
   "flash.unallocated": "未配置",
   "flash.readPartitionTable": "讀取分割表",
-
   "files.section": "檔案",
   "files.import": "匯入二進位檔案",
   "files.empty": "尚未載入檔案。匯入 .bin 檔案即可在沒有裝置的情況下分析。",
   "files.remove": "移除",
-
   "partition.section": "分割區",
   "partition.label": "標籤",
   "partition.type": "類型",
@@ -57,7 +50,6 @@
   "partition.flags": "旗標",
   "partition.encrypted": "已加密",
   "partition.none": "尚未載入分割表。",
-
   "action.readFromDevice": "從裝置讀取",
   "action.writeToDevice": "寫入裝置",
   "action.readPartition": "讀取分割區",
@@ -73,7 +65,6 @@
   "action.close": "關閉",
   "action.confirm": "執行",
   "action.backupFirst": "先備份",
-
   "inspector.section": "檢視器",
   "inspector.tab.info": "資訊",
   "inspector.tab.hex": "十六進位",
@@ -84,7 +75,6 @@
   "inspector.notRead": "此區域尚未讀取。",
   "inspector.format": "格式",
   "inspector.confidence": "信賴度",
-
   "hex.jumpTo": "跳至位址",
   "hex.searchHex": "搜尋十六進位",
   "hex.searchText": "搜尋文字",
@@ -93,12 +83,10 @@
   "hex.matches": "{count} 筆符合",
   "hex.offset": "位移",
   "hex.length": "長度",
-
   "log.section": "記錄",
   "log.clear": "清除",
   "log.export": "匯出記錄",
   "log.empty": "目前沒有記錄。",
-
   "progress.reading": "讀取中",
   "progress.writing": "寫入中",
   "progress.erasing": "抹除中",
@@ -106,7 +94,6 @@
   "progress.analyzing": "分析中",
   "progress.connecting": "連接中",
   "progress.loading-stub": "載入 stub 中",
-
   "confirm.title": "確認破壞性操作",
   "confirm.dangerous": "此區域相當關鍵。寫入錯誤資料可能導致裝置無法開機。",
   "confirm.target": "目標",
@@ -114,7 +101,6 @@
   "confirm.notBackedUp": "此區域尚未備份。",
   "confirm.typeToConfirm": "請輸入 {word} 以繼續",
   "confirm.encrypted": "此分割區標記為已加密。寫入明文會使裝置讀到損壞的內容。",
-
   "analyze.type.partition-table": "分割表",
   "analyze.type.esp-image": "ESP 韌體映像",
   "analyze.type.otadata": "OTA 資料",
@@ -122,7 +108,6 @@
   "analyze.type.encrypted?": "可能已加密",
   "analyze.possiblyEncrypted": "熵值偏高且未發現已知結構。此區域可能已加密，因此不作解析。",
   "analyze.failed": "{analyzer} 分析器失敗：{message}",
-
   "image.entryPoint": "進入點",
   "image.segments": "區段",
   "image.checksum": "檢查碼",
@@ -139,13 +124,11 @@
   "image.truncatedSegmentHeader": "標頭宣告 {declared} 個區段，但資料在第 {index} 個之後結束。",
   "image.truncatedChecksum": "映像在檢查碼位元組之前就結束了。",
   "image.truncatedHash": "映像宣告附加了 SHA-256，但實際資料缺失。",
-
   "otadata.activeSector": "生效磁區",
   "otadata.bootSlot": "開機插槽",
   "otadata.neverWritten": "沒有 OTA 更新紀錄，裝置將從 factory 應用程式開機。",
   "otadata.noValidSector": "兩個 OTA 資料磁區的檢查碼都無效。",
   "otadata.missingSector": "缺少 OTA 資料磁區 {index}。",
-
   "partition.md5Mismatch": "分割表檢查碼不符：預期 {expected}，實際 {actual}。",
   "partition.empty": "找不到任何分割區項目。",
   "partition.tooMany": "{count} 個項目超過分割表上限 {max}。",
@@ -160,7 +143,6 @@
   "partition.missingOtaData": "定義了 {count} 個 OTA 插槽，但缺少 otadata 分割區。",
   "partition.singleOtaSlot": "只定義了一個 OTA 插槽，空中更新至少需要兩個。",
   "partition.factoryWithOta": "同時定義了 factory 分割區與 OTA 插槽。",
-
   "error.TRANSPORT_TIMEOUT": "裝置停止回應。",
   "error.TRANSPORT_CLOSED": "序列埠已關閉。",
   "error.SYNC_FAILED": "無法與裝置同步。請按住 BOOT 鍵並按一下 EN 鍵，然後重試。",
@@ -179,11 +161,16 @@
   "error.ABORTED": "操作已取消。",
   "error.UNKNOWN_FLASH_SIZE": "無法偵測 Flash 容量。",
   "error.unexpected": "未預期的錯誤：{message}",
-
   "protocol.resetting": "正在重置裝置（{strategy}）…",
   "protocol.synced": "第 {attempt} 次嘗試後同步成功。",
   "protocol.syncFailed": "同步失敗。",
   "protocol.chipDetected": "偵測到 {chip}。",
+  "protocol.securityInfo": "安全資訊：chip id {chipId}，API 版本 {apiVersion}。",
+  "protocol.securityInfoUnavailable": "GET_SECURITY_INFO 無法使用（{message}），改用 magic 暫存器。",
+  "protocol.unknownChipId": "chip id {chipId} 不在晶片定義表中。",
+  "protocol.magicValue": "magic 暫存器讀到 {magic}。",
+  "protocol.unknownMagic": "magic 值 {magic} 不在晶片定義表中。",
+  "protocol.magicReadFailed": "無法讀取 magic 暫存器（{message}）。",
   "protocol.stubLoaded": "flasher stub 已在 {chip} 上執行。",
   "protocol.stubLoadFailed": "無法載入 stub（{message}），繼續使用 ROM 載入器。",
   "protocol.stubBlockedBySdm": "Secure Download Mode 阻止載入 stub。",
@@ -193,7 +180,6 @@
   "protocol.unknownFlashSize": "無法辨識的 Flash 容量位元組 0x{sizeId}。",
   "protocol.flashSizeDetectFailed": "Flash 容量偵測失敗（{message}）。",
   "flash.readDigestMismatch": "裝置回報的摘要與接收到的資料不一致。",
-
   "op.connected": "已連接。",
   "op.disconnected": "已中斷。",
   "op.imported": "已匯入 {name}（{size}）。",

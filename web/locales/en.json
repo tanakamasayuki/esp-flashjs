@@ -5,11 +5,9 @@
   "app.repository": "GitHub",
   "app.docs": "Docs",
   "app.examples": "Examples",
-
   "browser.unsupported.title": "This browser cannot connect to devices",
   "browser.unsupported.body": "Web Serial is required to talk to a device, and is available in Chrome, Edge and other Chromium-based desktop browsers. You can still import binary files and analyze them offline.",
   "browser.insecureContext": "Web Serial requires a secure context. Open this page over HTTPS, or over http://localhost during development.",
-
   "device.section": "Device",
   "device.connect": "Connect",
   "device.disconnect": "Disconnect",
@@ -25,28 +23,23 @@
   "device.mode.rom": "ROM loader",
   "device.features": "Features",
   "device.unknown": "unknown",
-
   "device.romModeWarning": "Running from the ROM loader. Reading and erasing flash are unavailable because the ROM does not implement those commands; writing still works.",
   "device.secureDownloadMode": "Secure Download Mode is enabled on this chip. Reading flash and loading the stub are blocked by the hardware.",
   "device.encryptionEnabled": "Flash encryption is enabled. Partition contents will be unreadable, and writing plaintext will make them unusable.",
-
   "feature.wifi": "Wi-Fi",
   "feature.bt": "Bluetooth Classic",
   "feature.ble": "Bluetooth LE",
   "feature.ieee802154": "802.15.4",
-
   "flash.section": "Flash",
   "flash.map": "Flash Map",
   "flash.dump": "Flash Dump",
   "flash.eraseAll": "Erase Whole Flash",
   "flash.unallocated": "Unallocated",
   "flash.readPartitionTable": "Read Partition Table",
-
   "files.section": "Files",
   "files.import": "Import Binary",
   "files.empty": "No files loaded. Import a .bin file to analyze it without a device.",
   "files.remove": "Remove",
-
   "partition.section": "Partitions",
   "partition.label": "Label",
   "partition.type": "Type",
@@ -57,7 +50,6 @@
   "partition.flags": "Flags",
   "partition.encrypted": "Encrypted",
   "partition.none": "No partition table loaded.",
-
   "action.readFromDevice": "Read from Device",
   "action.writeToDevice": "Write to Device",
   "action.readPartition": "Read Partition",
@@ -73,7 +65,6 @@
   "action.close": "Close",
   "action.confirm": "Confirm",
   "action.backupFirst": "Back Up First",
-
   "inspector.section": "Inspector",
   "inspector.tab.info": "Info",
   "inspector.tab.hex": "Hex",
@@ -84,7 +75,6 @@
   "inspector.notRead": "This region has not been read yet.",
   "inspector.format": "Format",
   "inspector.confidence": "Confidence",
-
   "hex.jumpTo": "Jump to address",
   "hex.searchHex": "Search hex",
   "hex.searchText": "Search text",
@@ -93,12 +83,10 @@
   "hex.matches": "{count} matches",
   "hex.offset": "Offset",
   "hex.length": "Length",
-
   "log.section": "Log",
   "log.clear": "Clear",
   "log.export": "Export Log",
   "log.empty": "Nothing logged yet.",
-
   "progress.reading": "Reading",
   "progress.writing": "Writing",
   "progress.erasing": "Erasing",
@@ -106,7 +94,6 @@
   "progress.analyzing": "Analyzing",
   "progress.connecting": "Connecting",
   "progress.loading-stub": "Loading stub",
-
   "confirm.title": "Confirm a destructive operation",
   "confirm.dangerous": "This region is critical. Writing incorrect data here can leave the device unable to boot.",
   "confirm.target": "Target",
@@ -114,7 +101,6 @@
   "confirm.notBackedUp": "This region has not been backed up.",
   "confirm.typeToConfirm": "Type {word} to continue",
   "confirm.encrypted": "This partition is marked encrypted. Writing plaintext to it will corrupt it from the device's point of view.",
-
   "analyze.type.partition-table": "Partition Table",
   "analyze.type.esp-image": "ESP Firmware Image",
   "analyze.type.otadata": "OTA Data",
@@ -122,7 +108,6 @@
   "analyze.type.encrypted?": "Possibly Encrypted",
   "analyze.possiblyEncrypted": "High entropy and no recognizable structure. This region may be encrypted; it is not being interpreted.",
   "analyze.failed": "The {analyzer} analyzer failed: {message}",
-
   "image.entryPoint": "Entry point",
   "image.segments": "Segments",
   "image.checksum": "Checksum",
@@ -139,13 +124,11 @@
   "image.truncatedSegmentHeader": "Header declares {declared} segments but the data ends after {index}.",
   "image.truncatedChecksum": "The image ends before its checksum byte.",
   "image.truncatedHash": "The image declares an appended SHA-256 that is not present.",
-
   "otadata.activeSector": "Active sector",
   "otadata.bootSlot": "Boot slot",
   "otadata.neverWritten": "No OTA update has been recorded; the device boots the factory application.",
   "otadata.noValidSector": "Neither OTA data sector has a valid checksum.",
   "otadata.missingSector": "OTA data sector {index} is missing.",
-
   "partition.md5Mismatch": "Partition table checksum does not match: expected {expected}, computed {actual}.",
   "partition.empty": "No partition entries were found.",
   "partition.tooMany": "{count} entries exceed the {max} the table can hold.",
@@ -160,7 +143,6 @@
   "partition.missingOtaData": "{count} OTA slots are defined but there is no otadata partition.",
   "partition.singleOtaSlot": "Only one OTA slot is defined; over-the-air updates need at least two.",
   "partition.factoryWithOta": "Both a factory partition and OTA slots are defined.",
-
   "error.TRANSPORT_TIMEOUT": "The device stopped responding.",
   "error.TRANSPORT_CLOSED": "The serial port is closed.",
   "error.SYNC_FAILED": "Could not synchronize with the device. Hold the BOOT button, press EN, then try again.",
@@ -179,11 +161,16 @@
   "error.ABORTED": "The operation was cancelled.",
   "error.UNKNOWN_FLASH_SIZE": "The flash size could not be detected.",
   "error.unexpected": "Unexpected error: {message}",
-
   "protocol.resetting": "Resetting the device ({strategy})…",
   "protocol.synced": "Synchronized after {attempt} attempt(s).",
   "protocol.syncFailed": "Synchronization failed.",
   "protocol.chipDetected": "Detected {chip}.",
+  "protocol.securityInfo": "Security info: chip id {chipId}, API version {apiVersion}.",
+  "protocol.securityInfoUnavailable": "GET_SECURITY_INFO unavailable ({message}); falling back to the magic register.",
+  "protocol.unknownChipId": "Chip id {chipId} is not in the chip table.",
+  "protocol.magicValue": "Magic register reads {magic}.",
+  "protocol.unknownMagic": "Magic value {magic} is not in the chip table.",
+  "protocol.magicReadFailed": "Could not read the magic register ({message}).",
   "protocol.stubLoaded": "Flasher stub running on {chip}.",
   "protocol.stubLoadFailed": "Could not load the stub ({message}); continuing with the ROM loader.",
   "protocol.stubBlockedBySdm": "Secure Download Mode prevents loading the stub.",
@@ -193,7 +180,6 @@
   "protocol.unknownFlashSize": "Unrecognized flash capacity byte 0x{sizeId}.",
   "protocol.flashSizeDetectFailed": "Flash size detection failed ({message}).",
   "flash.readDigestMismatch": "The digest reported by the device does not match the data received.",
-
   "op.connected": "Connected.",
   "op.disconnected": "Disconnected.",
   "op.imported": "Imported {name} ({size}).",

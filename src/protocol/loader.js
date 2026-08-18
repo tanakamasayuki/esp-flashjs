@@ -24,6 +24,7 @@ import {
 import { CHIP_DETECT_MAGIC_REG, FLASH_SIZE_BY_ID, chipByImageId, chipByMagic } from './chips.js';
 import { loadStub } from './stub-loader.js';
 import { delay } from '../transport/transport.js';
+import { toHexAddress } from '../util/hex.js';
 import {
   CommandFailedError,
   OperationAbortedError,
@@ -336,25 +337,38 @@ export class EspLoader {
     try {
       this.securityInfo = await this.getSecurityInfo({ signal });
       chipId = this.securityInfo.chipId;
-    } catch {
+      this.log('info', 'protocol.securityInfo', {
+        chipId: chipId === null ? 'n/a' : chipId,
+        apiVersion: this.securityInfo.apiVersion ?? 'n/a',
+      });
+    } catch (error) {
       // ESP32 has no GET_SECURITY_INFO at all, and ESP32-S2 answers without a
       // chip id. Both are expected; fall through to the magic register.
       this.securityInfo = null;
+      this.log('info', 'protocol.securityInfoUnavailable', {
+        message: /** @type {Error} */ (error).message,
+      });
     }
 
     if (chipId !== null) {
       const chip = chipByImageId(chipId);
       if (chip) return chip;
+      this.log('warn', 'protocol.unknownChipId', { chipId });
     }
 
     /** @type {number|null} */
     let magic = null;
     try {
       magic = await this.readReg(CHIP_DETECT_MAGIC_REG, { signal });
+      this.log('info', 'protocol.magicValue', { magic: toHexAddress(magic) });
       const chip = chipByMagic(magic);
       if (chip) return chip;
-    } catch {
+      this.log('warn', 'protocol.unknownMagic', { magic: toHexAddress(magic) });
+    } catch (error) {
       // Secure Download Mode blocks register reads; nothing more to try.
+      this.log('warn', 'protocol.magicReadFailed', {
+        message: /** @type {Error} */ (error).message,
+      });
     }
 
     throw new UnknownChipError(chipId, magic);

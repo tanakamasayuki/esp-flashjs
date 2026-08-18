@@ -46,6 +46,17 @@ export class WebSerialTransport {
      * @type {Uint8Array}
      */
     this.pending = new Uint8Array(0);
+    /**
+     * Callbacks waiting for `pending` to become non-empty.
+     * @type {Array<() => void>}
+     */
+    this.waiters = [];
+    /** @type {Promise<void>|null} The background read loop. */
+    this.pump = null;
+    /** @type {boolean} Set once the stream ends. */
+    this.streamClosed = false;
+    /** @type {unknown} An error raised by the stream, delivered to the next read. */
+    this.streamError = null;
   }
 
   /**
@@ -117,12 +128,71 @@ export class WebSerialTransport {
     }
     this.opened = true;
     this.pending = new Uint8Array(0);
+    this.waiters = [];
+    this.streamClosed = false;
+    this.streamError = null;
+    this.pump = this.readLoop();
+  }
+
+  /**
+   * Drains the port into `pending` for as long as it is open.
+   *
+   * Reading has to run continuously rather than once per `read()` call. A
+   * `reader.read()` raced against a timeout stays in flight when the timeout
+   * wins, and then swallows the next chunk to arrive — which is exactly the
+   * situation the SYNC retry loop creates, with a 100 ms timeout on a device
+   * that has not answered yet. Nothing may abandon a read.
+   *
+   * @returns {Promise<void>}
+   */
+  async readLoop() {
+    const reader = this.reader;
+    if (!reader) return;
+    try {
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        if (value && value.length > 0) {
+          this.append(value);
+          this.wake();
+        }
+      }
+    } catch (error) {
+      // Unplugging the cable lands here. Hand it to whoever reads next.
+      this.streamError = error;
+    } finally {
+      this.streamClosed = true;
+      this.wake();
+    }
+  }
+
+  /**
+   * @param {Uint8Array} chunk
+   */
+  append(chunk) {
+    if (this.pending.length === 0) {
+      this.pending = chunk;
+      return;
+    }
+    const merged = new Uint8Array(this.pending.length + chunk.length);
+    merged.set(this.pending);
+    merged.set(chunk, this.pending.length);
+    this.pending = merged;
+  }
+
+  /** Releases everyone waiting on new data. */
+  wake() {
+    const waiting = this.waiters;
+    this.waiters = [];
+    for (const resolve of waiting) resolve();
   }
 
   /** @returns {Promise<void>} */
   async close() {
     if (!this.opened) return;
     this.opened = false;
+    this.streamClosed = true;
+    this.wake();
     try {
       await this.reader?.cancel();
     } catch {
@@ -158,48 +228,75 @@ export class WebSerialTransport {
   }
 
   /**
+   * Returns whatever the pump has buffered, waiting up to `timeoutMs` for it.
+   *
    * @param {ReadOptions} [options]
    * @returns {Promise<Uint8Array>}
    */
   async read({ timeoutMs = 3000, signal } = {}) {
-    if (!this.opened || !this.reader) throw new TransportClosedError();
+    if (!this.opened) throw new TransportClosedError();
 
-    if (this.pending.length > 0) {
-      const out = this.pending;
-      this.pending = new Uint8Array(0);
-      return out;
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      if (this.pending.length > 0) {
+        const out = this.pending;
+        this.pending = new Uint8Array(0);
+        return out;
+      }
+      if (this.streamError !== null) {
+        const error = this.streamError;
+        this.streamError = null;
+        throw error;
+      }
+      if (this.streamClosed) throw new TransportClosedError();
+
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) throw new TransportTimeoutError(timeoutMs);
+      // Times out without disturbing the pump, so a late chunk still lands in
+      // `pending` and reaches the next caller.
+      await this.waitForData(remaining, timeoutMs, signal);
     }
+  }
 
-    /** @type {ReturnType<typeof setTimeout>|undefined} */
-    let timer;
-    /** @type {(() => void)|undefined} */
-    let onAbort;
+  /**
+   * Resolves when the pump reports new data, or rejects on timeout or abort.
+   *
+   * @param {number} remainingMs
+   * @param {number} timeoutMs Reported in the error, for a readable message.
+   * @param {AbortSignal} [signal]
+   * @returns {Promise<void>}
+   */
+  waitForData(remainingMs, timeoutMs, signal) {
+    return new Promise((resolve, reject) => {
+      if (signal?.aborted) {
+        reject(new OperationAbortedError('reading'));
+        return;
+      }
 
-    try {
-      const readPromise = this.reader.read();
+      /** @type {ReturnType<typeof setTimeout>} */
+      let timer;
+      /** @type {(() => void)|undefined} */
+      let onAbort;
 
-      const timeoutPromise = new Promise((_, reject) => {
-        timer = setTimeout(() => reject(new TransportTimeoutError(timeoutMs)), timeoutMs);
-      });
+      const waiter = () => finish();
 
-      const abortPromise = new Promise((_, reject) => {
-        if (!signal) return;
-        if (signal.aborted) {
-          reject(new OperationAbortedError('reading'));
-          return;
-        }
-        onAbort = () => reject(new OperationAbortedError('reading'));
+      /** @param {unknown} [error] */
+      const finish = (error) => {
+        clearTimeout(timer);
+        if (signal && onAbort) signal.removeEventListener('abort', onAbort);
+        const index = this.waiters.indexOf(waiter);
+        if (index !== -1) this.waiters.splice(index, 1);
+        if (error) reject(error);
+        else resolve();
+      };
+
+      this.waiters.push(waiter);
+      timer = setTimeout(() => finish(new TransportTimeoutError(timeoutMs)), remainingMs);
+      if (signal) {
+        onAbort = () => finish(new OperationAbortedError('reading'));
         signal.addEventListener('abort', onAbort, { once: true });
-      });
-
-      const result = await Promise.race([readPromise, timeoutPromise, abortPromise]);
-      const { value, done } = /** @type {ReadableStreamReadResult<Uint8Array>} */ (result);
-      if (done) throw new TransportClosedError();
-      return value ?? new Uint8Array(0);
-    } finally {
-      if (timer !== undefined) clearTimeout(timer);
-      if (signal && onAbort) signal.removeEventListener('abort', onAbort);
-    }
+      }
+    });
   }
 
   /**
@@ -260,13 +357,9 @@ export class WebSerialTransport {
   /** @returns {Promise<void>} */
   async flushInput() {
     this.pending = new Uint8Array(0);
-    // Drain whatever the OS has already buffered, without blocking long.
-    for (;;) {
-      try {
-        await this.read({ timeoutMs: 20 });
-      } catch {
-        return;
-      }
-    }
+    // Give the pump a turn to hand over anything the OS had already buffered,
+    // then drop that too.
+    await delay(20);
+    this.pending = new Uint8Array(0);
   }
 }

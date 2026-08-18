@@ -5,11 +5,9 @@
   "app.repository": "GitHub",
   "app.docs": "ドキュメント",
   "app.examples": "サンプル",
-
   "browser.unsupported.title": "このブラウザではデバイスに接続できません",
   "browser.unsupported.body": "デバイスとの通信には Web Serial が必要で、Chrome・Edge などデスクトップ版の Chromium 系ブラウザで利用できます。バイナリファイルの読み込みとオフライン解析はこのままご利用いただけます。",
   "browser.insecureContext": "Web Serial はセキュアコンテキストでのみ動作します。HTTPS で開くか、開発中は http://localhost をご利用ください。",
-
   "device.section": "デバイス",
   "device.connect": "接続",
   "device.disconnect": "切断",
@@ -25,28 +23,23 @@
   "device.mode.rom": "ROM ローダ",
   "device.features": "機能",
   "device.unknown": "不明",
-
   "device.romModeWarning": "ROM ローダで動作しています。ROM は読み出し・消去コマンドを実装していないため、Flash の読み出しと消去は利用できません。書き込みは可能です。",
   "device.secureDownloadMode": "このチップは Secure Download Mode が有効です。Flash の読み出しと stub のロードはハードウェア側で禁止されています。",
   "device.encryptionEnabled": "Flash 暗号化が有効です。パーティションの内容は解析できず、平文を書き込むと使用不能になります。",
-
   "feature.wifi": "Wi-Fi",
   "feature.bt": "Bluetooth Classic",
   "feature.ble": "Bluetooth LE",
   "feature.ieee802154": "802.15.4",
-
   "flash.section": "Flash",
   "flash.map": "Flash マップ",
   "flash.dump": "Flash ダンプ",
   "flash.eraseAll": "Flash 全体を消去",
   "flash.unallocated": "未割り当て",
   "flash.readPartitionTable": "パーティションテーブルを読み出す",
-
   "files.section": "ファイル",
   "files.import": "バイナリを読み込む",
   "files.empty": "ファイルがありません。.bin を読み込むと、デバイスなしで解析できます。",
   "files.remove": "削除",
-
   "partition.section": "パーティション",
   "partition.label": "ラベル",
   "partition.type": "タイプ",
@@ -57,7 +50,6 @@
   "partition.flags": "フラグ",
   "partition.encrypted": "暗号化",
   "partition.none": "パーティションテーブルが読み込まれていません。",
-
   "action.readFromDevice": "デバイスから読み出す",
   "action.writeToDevice": "デバイスへ書き込む",
   "action.readPartition": "パーティションを読み出す",
@@ -73,7 +65,6 @@
   "action.close": "閉じる",
   "action.confirm": "実行",
   "action.backupFirst": "先にバックアップ",
-
   "inspector.section": "インスペクタ",
   "inspector.tab.info": "情報",
   "inspector.tab.hex": "Hex",
@@ -84,7 +75,6 @@
   "inspector.notRead": "この領域はまだ読み出されていません。",
   "inspector.format": "形式",
   "inspector.confidence": "確信度",
-
   "hex.jumpTo": "アドレスへ移動",
   "hex.searchHex": "Hex 検索",
   "hex.searchText": "テキスト検索",
@@ -93,12 +83,10 @@
   "hex.matches": "{count} 件",
   "hex.offset": "オフセット",
   "hex.length": "長さ",
-
   "log.section": "ログ",
   "log.clear": "消去",
   "log.export": "ログを書き出す",
   "log.empty": "ログはまだありません。",
-
   "progress.reading": "読み出し中",
   "progress.writing": "書き込み中",
   "progress.erasing": "消去中",
@@ -106,7 +94,6 @@
   "progress.analyzing": "解析中",
   "progress.connecting": "接続中",
   "progress.loading-stub": "stub ロード中",
-
   "confirm.title": "破壊的な操作の確認",
   "confirm.dangerous": "この領域は重要です。誤ったデータを書き込むと、デバイスが起動しなくなる可能性があります。",
   "confirm.target": "対象",
@@ -114,7 +101,6 @@
   "confirm.notBackedUp": "この領域はバックアップされていません。",
   "confirm.typeToConfirm": "続行するには {word} と入力してください",
   "confirm.encrypted": "このパーティションには暗号化フラグが立っています。平文を書き込むと、デバイスから見て内容が壊れます。",
-
   "analyze.type.partition-table": "パーティションテーブル",
   "analyze.type.esp-image": "ESP ファームウェアイメージ",
   "analyze.type.otadata": "OTA データ",
@@ -122,7 +108,6 @@
   "analyze.type.encrypted?": "暗号化の可能性",
   "analyze.possiblyEncrypted": "エントロピーが高く、既知の構造が見つかりません。暗号化されている可能性があるため、内容の解釈は行いません。",
   "analyze.failed": "{analyzer} アナライザが失敗しました: {message}",
-
   "image.entryPoint": "エントリポイント",
   "image.segments": "セグメント",
   "image.checksum": "チェックサム",
@@ -139,13 +124,11 @@
   "image.truncatedSegmentHeader": "ヘッダは {declared} セグメントを宣言していますが、{index} 個でデータが終わっています。",
   "image.truncatedChecksum": "チェックサムバイトの手前でイメージが終わっています。",
   "image.truncatedHash": "SHA-256 の付加が宣言されていますが、実データがありません。",
-
   "otadata.activeSector": "有効セクタ",
   "otadata.bootSlot": "起動スロット",
   "otadata.neverWritten": "OTA 更新の記録がありません。factory アプリから起動します。",
   "otadata.noValidSector": "どちらの OTA データセクタもチェックサムが不正です。",
   "otadata.missingSector": "OTA データセクタ {index} がありません。",
-
   "partition.md5Mismatch": "パーティションテーブルのチェックサムが一致しません。期待値 {expected}、計算値 {actual}。",
   "partition.empty": "パーティションエントリが見つかりませんでした。",
   "partition.tooMany": "{count} 個のエントリは、テーブルの上限 {max} を超えています。",
@@ -160,7 +143,6 @@
   "partition.missingOtaData": "OTA スロットが {count} 個ありますが、otadata パーティションがありません。",
   "partition.singleOtaSlot": "OTA スロットが 1 個しかありません。OTA 更新には 2 個以上必要です。",
   "partition.factoryWithOta": "factory パーティションと OTA スロットが同時に定義されています。",
-
   "error.TRANSPORT_TIMEOUT": "デバイスが応答しなくなりました。",
   "error.TRANSPORT_CLOSED": "シリアルポートが閉じられています。",
   "error.SYNC_FAILED": "デバイスと同期できませんでした。BOOT ボタンを押しながら EN を押し、再試行してください。",
@@ -179,11 +161,16 @@
   "error.ABORTED": "操作は中断されました。",
   "error.UNKNOWN_FLASH_SIZE": "Flash サイズを検出できませんでした。",
   "error.unexpected": "予期しないエラー: {message}",
-
   "protocol.resetting": "デバイスをリセットしています（{strategy}）…",
   "protocol.synced": "{attempt} 回目で同期しました。",
   "protocol.syncFailed": "同期に失敗しました。",
   "protocol.chipDetected": "{chip} を検出しました。",
+  "protocol.securityInfo": "セキュリティ情報: chip id {chipId}、API バージョン {apiVersion}。",
+  "protocol.securityInfoUnavailable": "GET_SECURITY_INFO が使えません（{message}）。magic レジスタにフォールバックします。",
+  "protocol.unknownChipId": "chip id {chipId} はチップ定義表にありません。",
+  "protocol.magicValue": "magic レジスタの値は {magic} です。",
+  "protocol.unknownMagic": "magic 値 {magic} はチップ定義表にありません。",
+  "protocol.magicReadFailed": "magic レジスタを読めませんでした（{message}）。",
   "protocol.stubLoaded": "{chip} で flasher stub が動作しています。",
   "protocol.stubLoadFailed": "stub をロードできませんでした（{message}）。ROM ローダで続行します。",
   "protocol.stubBlockedBySdm": "Secure Download Mode のため stub をロードできません。",
@@ -193,7 +180,6 @@
   "protocol.unknownFlashSize": "未知の Flash 容量バイト 0x{sizeId} です。",
   "protocol.flashSizeDetectFailed": "Flash サイズの検出に失敗しました（{message}）。",
   "flash.readDigestMismatch": "デバイスが報告したダイジェストが、受信データと一致しません。",
-
   "op.connected": "接続しました。",
   "op.disconnected": "切断しました。",
   "op.imported": "{name} を読み込みました（{size}）。",

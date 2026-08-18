@@ -235,6 +235,9 @@ test('MAC address is read from eFuse', async () => {
   const flash = new EspFlash(loader);
   const info = await flash.getInfo();
   assert.match(info.mac, /^[0-9a-f]{2}(:[0-9a-f]{2}){5}$/);
+  // The two eFuse words are reassembled in a specific order; a swap here would
+  // still look like a MAC, so pin the exact value the mock encodes.
+  assert.equal(info.mac, '24:0a:c4:11:22:33');
 });
 
 test('flash size is detected from the SPI flash JEDEC id', async () => {

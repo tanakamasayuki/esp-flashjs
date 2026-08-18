@@ -108,9 +108,10 @@ export class MockTransport {
     if (this.chip.usesMagicValue && this.chip.magicValue !== null) {
       this.registers.set(0x40001000, this.chip.magicValue);
     }
-    // A plausible factory MAC.
-    this.registers.set(this.chip.macEfuseReg, 0xc4400a24);
-    this.registers.set(this.chip.macEfuseReg + 4, 0x00007c3f);
+    // A plausible factory MAC: 24:0a:c4:11:22:33, using a real Espressif OUI.
+    // The two words are laid out the way readMac() reassembles them.
+    this.registers.set(this.chip.macEfuseReg, 0xc4112233);
+    this.registers.set(this.chip.macEfuseReg + 4, 0x0000240a);
   }
 
   /* ------------------------------------------------------------------ */
