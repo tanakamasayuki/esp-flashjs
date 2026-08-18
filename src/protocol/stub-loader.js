@@ -100,11 +100,13 @@ export function registerStub(name, image) {
  * @param {object} [options]
  * @param {AbortSignal} [options.signal]
  * @param {StubImage} [options.image] Overrides the bundled stub.
+ * @param {string} [options.stubName] Which stub build to fetch; defaults to
+ *   the chip's own. Some chips need a different one per silicon revision.
  * @returns {Promise<void>}
  * @throws {StubLoadError}
  */
-export async function loadStub(loader, chip, { signal, image } = {}) {
-  const stub = image ?? (await fetchStub(chip.stub));
+export async function loadStub(loader, chip, { signal, image, stubName } = {}) {
+  const stub = image ?? (await fetchStub(stubName ?? chip.stub));
   const blockSize = chip.ramBlockSize;
 
   /** @type {Array<{name: string, bytes: Uint8Array, address: number}>} */

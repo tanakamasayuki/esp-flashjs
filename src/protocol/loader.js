@@ -580,7 +580,7 @@ export class EspLoader {
     }
 
     try {
-      await loadStub(this, chip, { signal });
+      await loadStub(this, chip, { signal, stubName: await this.stubNameFor(chip) });
       this.isStub = true;
       this.spiAttached = true; // The stub attaches SPI flash as it starts.
       this.log('info', 'protocol.stubLoaded', { chip: chip.name });
@@ -592,6 +592,38 @@ export class EspLoader {
       return false;
     }
   }
+
+  /**
+   * Which stub build this particular piece of silicon needs.
+   *
+   * Usually just the chip's own, but the ESP32-P4 moved its RAM between
+   * revisions: below v3.0 the ordinary stub is written to addresses that do
+   * not exist, and the chip never greets back. That failure gives no hint of
+   * its cause, so it is worth two register reads to avoid.
+   *
+   * A revision that cannot be read falls back to the default stub rather than
+   * failing: being unable to ask is not a reason to refuse to try.
+   *
+   * @param {ChipDef} chip
+   * @returns {Promise<string>}
+   */
+  async stubNameFor(chip) {
+    if (!chip.revision) return chip.stub;
+    try {
+      const word = await this.readReg(chip.revision.register);
+      const { major, minor } = chip.revision.decode(word);
+      const revision = major * 100 + minor;
+      const name = chip.revision.stubFor(revision);
+      this.log('info', 'protocol.chipRevision', { revision: `v${major}.${minor}`, stub: name });
+      return name;
+    } catch (error) {
+      this.log('warn', 'protocol.revisionUnknown', {
+        message: /** @type {Error} */ (error).message,
+      });
+      return chip.stub;
+    }
+  }
+
 
   /* ------------------------------------------------------------------ */
   /* Baud rate                                                           */

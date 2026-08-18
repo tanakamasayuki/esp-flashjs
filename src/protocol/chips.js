@@ -31,6 +31,8 @@ export const CHIP_DETECT_MAGIC_REG = 0x40001000;
  * @property {boolean} usesMagicValue
  * @property {number|null} magicValue
  * @property {string} stub           Base name of the stub JSON file.
+ * @property {ChipRevision} [revision] How to read the silicon revision, when a
+ *   decision depends on it. Absent for chips where nothing does.
  * @property {number} flashWriteSize
  * @property {number} ramBlockSize
  * @property {number} bootloaderOffset
@@ -231,12 +233,39 @@ export const CHIPS = [
     ramBlockSize: 0x1800,
     bootloaderOffset: 0x2000,
     macEfuseReg: 0x5012d000 + 0x044,
+    revision: {
+      // EFUSE_BLOCK1_ADDR + 4 * 2, where the packaging and version bits live.
+      register: 0x5012d000 + 0x044 + 8,
+      decode: (word) => ({
+        // The major version is split across two fields, high bit apart from
+        // the low two — reading it as one contiguous field gives 0 or 1 for
+        // every part actually shipped, which looks plausible and is wrong.
+        major: (((word >>> 23) & 1) << 2) | ((word >>> 4) & 0x03),
+        minor: word & 0x0f,
+      }),
+      stubFor: (revision) => (revision < 300 ? 'esp32p4-rev1' : 'esp32p4'),
+    },
     spiRegBase: 0x5008d000,
     ...MODERN_SPI,
     memoryMap: mapOf(0x40000000, 0x4c000000, 0x40000000, 0x4c000000),
     features: [],
   },
 ];
+
+/**
+ * Reads a chip's silicon revision and picks a stub for it.
+ *
+ * Only the ESP32-P4 needs this so far, and it needs it badly: revisions below
+ * v3.0 place RAM somewhere else, so the ordinary stub is uploaded to addresses
+ * that do not exist and the chip simply never greets back. Every P4 in
+ * circulation today is below v3.0, which made the library unusable on the
+ * whole family while looking like a mysterious stub failure.
+ *
+ * @typedef {object} ChipRevision
+ * @property {number} register    eFuse word holding the revision.
+ * @property {(word: number) => {major: number, minor: number}} decode
+ * @property {(revision: number) => string} stubFor  Revision as major*100+minor.
+ */
 
 /** @type {Map<number, ChipDef>} */
 const BY_CHIP_ID = new Map(CHIPS.map((c) => [c.imageChipId, c]));

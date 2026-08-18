@@ -183,6 +183,48 @@ Wi-Fi credentials, certificates and keys** first. Removing them from git history
 afterwards is a chore. The provisioning sketch writes only fixed constants for
 this reason, and the MAC lives in eFuse, outside every region captured.
 
+### 3.4 Driving the library against a real board
+
+`MockTransport` verifies the protocol without hardware, and it is a mock this
+project also wrote — the same trap the parsers fell into, one layer down. The
+fixtures do not close it either: they are esptool's output, so they exercise
+the *parsers* against real bytes while the reset sequence, chip detection, stub
+loading and chunked reads still only ever ran against the mock.
+
+```sh
+npm run build                       # the stubs must exist in dist/stub/
+node tools/hardware-check.mjs /dev/ttyUSB0 --compare test/fixtures/hardware/esp32
+node tools/hardware-check.mjs /dev/ttyACM3 --baud 460800 --chunk 32768
+```
+
+Node has no serial API and this project must not ship a native dependency, so
+`tools/serial-bridge.py` owns the port and speaks to a Node transport over
+stdio. pyserial is the only requirement, and only for this.
+
+The comparison is the point. esptool and this library share no code, so where
+they agree the agreement is evidence rather than self-consistency. Regions the
+device does not rewrite — the partition table, otadata — must match byte for
+byte. NVS and the filesystems are compared by *content*: the fixture sketch
+re-provisions them on every boot, so page sequence numbers advance and erased
+entries accumulate. Demanding identical bytes there would fail a healthy read.
+
+Two things this found that nothing else could:
+
+- **The ESP32-P4 needs a stub chosen by silicon revision.** Below v3.0 its RAM
+  lives elsewhere, so the ordinary stub is uploaded to addresses that do not
+  exist and the chip never greets back. Every P4 in circulation is below v3.0,
+  so the library did not work on the family at all — presenting as an
+  unexplained stub failure.
+- **`fetchStub` cannot work outside a browser.** It asks `fetch()` for a URL
+  next to the module, and Node's fetch does not implement `file:`. Every Node
+  consumer has to call `registerStub` instead, and reading flash depends on it.
+
+When a read fails, check whether esptool fails the same way before assuming the
+library is at fault. On the CH340 board here, neither can read 320 KB in one
+transfer; both succeed with smaller chunks. That is the link, not the code, and
+the harness has `--chunk` so the difference can be established rather than
+argued about.
+
 ### 3.4 MockTransport: the protocol without hardware
 
 `src/testing/mock-transport.js` is a simulated device that **speaks the real

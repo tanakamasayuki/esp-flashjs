@@ -32,6 +32,9 @@ const CHIPS = [
   'esp32c61',
   'esp32h2',
   'esp32p4',
+  // Revisions below v3.0 map RAM differently and need their own build. Every
+  // P4 shipped so far is one of them, so this is not an edge case.
+  'esp32p4-rev1',
 ];
 
 /**
