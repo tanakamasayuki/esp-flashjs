@@ -145,6 +145,13 @@ export {
   SPIFFS_NAME_OFFSET,
   SPIFFS_OBJ_ID_IX_FLAG,
 } from './format/fs/spiffs.js';
+export {
+  parseLittlefs,
+  ctzIndexOf,
+  ctzPointerCount,
+  LFS_TYPE,
+  LITTLEFS_MAGIC,
+} from './format/fs/littlefs.js';
 
 /* Analyzer registry ------------------------------------------------------- */
 export {
