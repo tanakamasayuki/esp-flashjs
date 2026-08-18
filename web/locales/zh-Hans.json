@@ -221,7 +221,5 @@
   "device.baudRate.hint": "开发板能接受哪些速率无法从外部预测：取决于 USB 桥接芯片、线缆和主机，而且更快未必更可靠。选一个即可——连接后会检测链路，不稳定时回退到 115200。",
   "op.linkFast": "链路已提升到 {baudRate} baud 并通过校验。",
   "op.linkFallback": "{baudRate} baud 在此链路上不稳定，已保持 {fallback}。读取会更慢但准确。",
-  "flash.readRetry": "读取 {address} 失败（{message}）。重试 {attempt}/{attempts}。",
-  "device.baudRate.native": "未使用（芯片自带 USB）",
-  "op.linkNative": "此端口为芯片自带 USB，速度设置不适用。"
+  "flash.readRetry": "读取 {address} 失败（{message}）。重试 {attempt}/{attempts}。"
 }

@@ -43,7 +43,6 @@
  * @property {string|null} error
  * @property {number} baudRate      What the user selected.
  * @property {number|null} linkBaudRate  What the link settled on, once connected.
- * @property {boolean} nativeUsb    The chip's own USB, where the rate is nominal.
  */
 
 /**
@@ -117,7 +116,6 @@ export function initialState() {
       // differ when a rate was tried and did not hold.
       baudRate: loadBaudRate(),
       linkBaudRate: null,
-      nativeUsb: false,
     },
     flash: { size: null },
     partitions: { table: null, source: null },

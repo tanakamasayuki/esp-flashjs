@@ -70,12 +70,9 @@ export async function connect() {
     flash = new EspFlash(loader);
     const info = await flash.getInfo();
 
-    // Only now, with the stub running, is it worth going faster — and only if
-    // there is a UART in the path at all.
+    // Only now, with the stub running, is it worth going faster.
     const requested = store.getState().device.baudRate;
-    const nativeUsb = transport.isNativeUsb;
-    const linkBaudRate = nativeUsb ? null : await raiseLinkSpeed(requested);
-    if (nativeUsb) store.log('info', 'op.linkNative');
+    const linkBaudRate = await raiseLinkSpeed(requested);
 
     store.setState({
       device: {
@@ -85,7 +82,6 @@ export async function connect() {
         error: null,
         baudRate: requested,
         linkBaudRate,
-        nativeUsb,
       },
       flash: { size: info.flashSize },
     });
@@ -109,7 +105,6 @@ export async function connect() {
         error: cancelled ? null : err.message,
         baudRate: store.getState().device.baudRate,
         linkBaudRate: null,
-        nativeUsb: false,
       },
     });
   }
@@ -118,7 +113,12 @@ export async function connect() {
 /**
  * Raises the line rate, but only if the link actually carries it.
  *
- * Falling back to a fixed "safe" rate would be wrong: measured on real
+ * Applied to every port, including the chip's own USB. It was tempting to skip
+ * those on the grounds that there is no UART in the path, but measurement says
+ * the rate matters there too: on an ESP32-S3 and an ESP32-P4 over
+ * USB-Serial/JTAG, reading 256 KB took 26 s at 115200 and 3.4 s at 1500000.
+ *
+ * Falling back to a fixed "safe" rate would also be wrong: measured on real
  * hardware, 115200 is not the most reliable rate — it was worse than 460800 on
  * the same board and cable, and the relationship is not monotonic. So the only
  * defensible move is to try what was asked for and keep it only if a real
@@ -172,7 +172,6 @@ export async function disconnect() {
       error: null,
       baudRate: store.getState().device.baudRate,
       linkBaudRate: null,
-      nativeUsb: false,
     },
     flash: { size: null },
     partitions: { table: null, source: null },

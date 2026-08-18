@@ -117,8 +117,6 @@ for (const name of files) {
     problems.push(`${stem}.bin is ${state} — the sketch does not appear to have run`);
   } else if (blank && stem in mayBeBlank) {
     notes.push(`${stem}.bin is erased: ${mayBeBlank[/** @type {keyof typeof mayBeBlank} */ (stem)]}`);
-  } else if (blank) {
-    notes.push(`${stem}.bin is erased — that filesystem may be unavailable on this chip`);
   }
 }
 
@@ -165,6 +163,81 @@ try {
   }
 } catch (error) {
   console.log(`      (parsers unavailable: ${/** @type {Error} */ (error).message})`);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Is each filesystem image the filesystem it claims to be?                     */
+/* -------------------------------------------------------------------------- */
+
+// Not paranoia. The first run of this fixture produced a spiffs.bin that was
+// actually a LittleFS image and a littlefs.bin that was blank, because
+// arduino-esp32's LittleFS defaults its partition label to "spiffs" — so it
+// formatted over what SPIFFS had just written, and never touched the partition
+// named after it. Both files looked entirely plausible: one full of data, one
+// erased, sizes correct, layout matching the CSV. Only the bytes gave it away.
+
+/** @param {Uint8Array} data @param {string} text */
+function containsText(data, text) {
+  const needle = new TextEncoder().encode(text);
+  outer: for (let i = 0; i + needle.length <= data.length; i++) {
+    for (let j = 0; j < needle.length; j++) if (data[i + j] !== needle[j]) continue outer;
+    return true;
+  }
+  return false;
+}
+
+/**
+ * The 8.3 form FAT stores a short name in: upper case, space-padded, no dot.
+ * These names all fit, so no long-name entries are written and searching for
+ * "hello.txt" in a FAT image finds nothing.
+ *
+ * @param {string} name
+ * @returns {string}
+ */
+function shortName(name) {
+  const dot = name.lastIndexOf('.');
+  const base = (dot === -1 ? name : name.slice(0, dot)).toUpperCase();
+  const ext = (dot === -1 ? '' : name.slice(dot + 1)).toUpperCase();
+  return base.padEnd(8, ' ') + ext.padEnd(3, ' ');
+}
+
+/** The tree the sketch writes to every filesystem. */
+const FS_FILES = ['hello.txt', 'big.bin', 'nested.txt', 'empty.txt'];
+
+const LITTLEFS_SUPERBLOCK_AT = 8;
+
+for (const name of ['spiffs', 'littlefs', 'ffat']) {
+  const data = await load(`${name}.bin`);
+  if (!data) continue;
+  if (isUniform(data, 0xff)) {
+    problems.push(`${name}.bin is erased — that filesystem was never mounted or written`);
+    continue;
+  }
+
+  const looksLikeLittlefs = containsText(
+    data.subarray(LITTLEFS_SUPERBLOCK_AT, LITTLEFS_SUPERBLOCK_AT + 8),
+    'littlefs',
+  );
+
+  if (name === 'littlefs' && !looksLikeLittlefs) {
+    problems.push('littlefs.bin has no LittleFS superblock');
+  }
+  if (name === 'spiffs' && looksLikeLittlefs) {
+    problems.push(
+      'spiffs.bin holds a LittleFS image — a filesystem was mounted without ' +
+        'naming its partition, so it formatted over the wrong one',
+    );
+  }
+  if (name === 'ffat' && !(data[510] === 0x55 && data[511] === 0xaa)) {
+    problems.push('ffat.bin has no 0x55AA boot-sector signature');
+  }
+
+  const missing = FS_FILES.filter(
+    (f) => !containsText(data, f) && !containsText(data, shortName(f)),
+  );
+  if (missing.length > 0) {
+    problems.push(`${name}.bin is missing ${missing.join(', ')} — the tree was not written`);
+  }
 }
 
 /* -------------------------------------------------------------------------- */

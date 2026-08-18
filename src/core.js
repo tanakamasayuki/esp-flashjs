@@ -114,6 +114,27 @@ export {
 /* OTA data ---------------------------------------------------------------- */
 export { parseOtaData, OTADATA_SECTOR_SIZE } from './format/otadata.js';
 
+/* NVS ---------------------------------------------------------------------- */
+export {
+  parseNvs,
+  entryCrc32,
+  pageHeaderCrc32,
+  entryState,
+  NVS_PAGE_SIZE,
+  NVS_ENTRY_SIZE,
+  NVS_ENTRY_COUNT,
+  NVS_KEY_SIZE,
+  NVS_MAX_KEY_LENGTH,
+  NVS_TYPE,
+  NVS_TYPE_NAMES,
+  PAGE_STATE,
+  PAGE_STATE_NAMES,
+  ENTRY_STATE,
+} from './format/nvs/parse.js';
+export { NvsStore, inferNvsType, sameValue } from './format/nvs/store.js';
+export { buildNvs, NVS_MIN_PAGES, NVS_MAX_CHUNK_SIZE } from './format/nvs/build.js';
+export { diffNvs, summarizeNvsDiff } from './format/nvs/diff.js';
+
 /* Analyzer registry ------------------------------------------------------- */
 export {
   registerAnalyzer,

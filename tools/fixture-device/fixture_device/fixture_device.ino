@@ -156,20 +156,29 @@ void setup() {
 
   provisionNvs();
 
-  if (SPIFFS.begin(true)) {
+  // Every partition label is passed explicitly.
+  //
+  // arduino-esp32's LittleFS defaults its label to "spiffs", for historical
+  // reasons: data partitions used to be called that. Relying on the defaults
+  // meant LittleFS formatted the partition named "spiffs" and overwrote what
+  // SPIFFS had just written there, while the partition named "littlefs" was
+  // never touched at all. The capture looked plausible either way — one image
+  // full of data, one erased — and only reading the bytes gave it away: the
+  // "spiffs" image began with a LittleFS superblock.
+  if (SPIFFS.begin(true, "/spiffs", 10, "spiffs")) {
     SPIFFS.format();
     SPIFFS.end();
-    SPIFFS.begin(true);
+    SPIFFS.begin(true, "/spiffs", 10, "spiffs");
     writeTree(SPIFFS, "SPIFFS");
     SPIFFS.end();
   } else {
     Serial.println("\n=== SPIFFS: unavailable");
   }
 
-  if (LittleFS.begin(true)) {
+  if (LittleFS.begin(true, "/littlefs", 10, "littlefs")) {
     LittleFS.format();
     LittleFS.end();
-    LittleFS.begin(true);
+    LittleFS.begin(true, "/littlefs", 10, "littlefs");
     writeTree(LittleFS, "LittleFS");
     LittleFS.end();
   } else {
@@ -177,10 +186,10 @@ void setup() {
   }
 
   // FAT needs a wear-levelling layer, and small partitions cannot host it.
-  if (FFat.begin(true)) {
+  if (FFat.begin(true, "/ffat", 10, "ffat")) {
     FFat.format();
     FFat.end();
-    FFat.begin(true);
+    FFat.begin(true, "/ffat", 10, "ffat");
     writeTree(FFat, "FatFS");
     FFat.end();
   } else {

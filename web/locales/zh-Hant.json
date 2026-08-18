@@ -221,7 +221,5 @@
   "device.baudRate.hint": "開發板能接受哪些速率無法從外部預測：取決於 USB 橋接晶片、線材與主機，而且更快未必更可靠。選一個即可——連線後會檢測連結，不穩定時退回 115200。",
   "op.linkFast": "連結已提升到 {baudRate} baud 並通過校驗。",
   "op.linkFallback": "{baudRate} baud 在此連結上不穩定，已保持 {fallback}。讀取會較慢但準確。",
-  "flash.readRetry": "讀取 {address} 失敗（{message}）。重試 {attempt}/{attempts}。",
-  "device.baudRate.native": "未使用（晶片內建 USB）",
-  "op.linkNative": "此連接埠為晶片內建 USB，速度設定不適用。"
+  "flash.readRetry": "讀取 {address} 失敗（{message}）。重試 {attempt}/{attempts}。"
 }

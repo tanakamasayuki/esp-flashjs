@@ -80,7 +80,9 @@ The chip is detected automatically and the files land in
 | --- | --- | --- |
 | `PORT` | required | Serial port |
 | `CHIP` | auto-detected | Force `esp32`, `esp32s3`, `esp32p4`, … |
-| `BAUD` | `115200` | Read speed. **Deliberately slow** — see below |
+| `BAUD` | `auto` | Read speed. `auto` measures it (below); a number pins it |
+| `BAUD_CANDIDATES` | 8 rates | What `auto` tries, fastest first |
+| `BAUD_PROBE_SIZE` | `0x40000` | Bytes read per candidate |
 | `WHOLE` | `1` | Read the whole flash once and slice locally; `0` reads region by region |
 | `ATTEMPTS` | `3` | Retries per chunk |
 | `CHUNK` | `0x40000` | Bytes per esptool invocation (256 KB) |
@@ -156,11 +158,29 @@ failures correlated with neither size nor order: spiffs and littlefs are both
 time on the wire, risks the link only once, and lets the stub's MD5 cover the
 whole image in a single check.
 
-**Why the baud default is slow:** capturing is the one step where a corrupted byte
-becomes a committed fixture, and 921600 is unreliable on ESP32 boards with a
-CP2102-class bridge. A full 4 MB dump takes minutes at 115200; not having to
-wonder whether the bytes are real is worth more than the time. Raise it with
-`BAUD=460800` only when you are in a hurry.
+**Why the baud default is `auto`:** no fixed value is defensible. On one CH340
+link, 115200 managed 2 of 4 attempts and 460800 managed 4 of 4 — slower was
+both less reliable and slower — and that ordering does not carry over to
+another cable or host.
+
+Retrying does not remove the need to choose well. Retries rescue a rate that
+fails occasionally; 921600 on that same link was 0 of 4, and no amount of
+retrying turns that into a capture.
+
+`auto` reads 256 KB at each candidate, fastest first, and keeps the first that
+succeeds. 256 KB because 64 KB passes at rates that collapse over a megabyte.
+
+**The rate matters on native USB too.** Skipping the probe there looked
+reasonable — no UART in the path, so surely the rate is nominal — but the
+measurement says otherwise:
+
+| | 115200 | 921600 | 1500000 |
+| --- | --- | --- | --- |
+| ESP32-S3 (USB-Serial/JTAG) | 26.0s | 4.4s | **3.4s** |
+| ESP32-P4 (USB-Serial/JTAG) | 26.3s | 4.8s | **3.8s** |
+
+Nearly eight times, for the same 256 KB. The detection branch was deleted and
+every port is probed.
 
 For several boards in a row:
 

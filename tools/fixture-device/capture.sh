@@ -17,11 +17,25 @@
 set -euo pipefail
 
 : "${PORT:?Set PORT, e.g. PORT=/dev/ttyUSB0 $0}"
-# Deliberately slow. Reading flash is the one operation where a corrupted
-# byte becomes a committed fixture, and 921600 is unreliable on ESP32 boards
-# with a CP2102-class bridge. A 4 MB dump takes minutes at this rate; that is
-# a fine trade for not having to wonder whether the bytes are real.
-BAUD="${BAUD:-115200}"
+# "auto" measures instead of guessing; a number pins it.
+#
+# No fixed default is defensible. Measured on one CH340 link, 115200 read
+# 256 KB twice out of four attempts while 460800 managed four out of four —
+# slower was both less reliable and slower. Neither is the rate to hard-code,
+# and the ordering is not transferable to another cable or host.
+#
+# Retrying does not remove the need to choose well. Retries rescue a rate that
+# fails occasionally; at 921600 on that same link nothing got through at all,
+# and no amount of retrying turns 0/4 into a capture.
+BAUD="${BAUD:-auto}"
+
+# Tried fastest first, so the first success is the best available. Covers both
+# the conventional ladder and the rates firmware bridges implement.
+BAUD_CANDIDATES="${BAUD_CANDIDATES:-1500000 921600 750000 500000 460800 250000 230400 115200}"
+
+# Probe with a read big enough to be discriminating. 64 KB passes at rates that
+# collapse over a megabyte; 256 KB is the size that separated them in testing.
+BAUD_PROBE_SIZE="${BAUD_PROBE_SIZE:-0x40000}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
 CSV="$HERE/fixture_device/partitions.csv"
@@ -41,6 +55,37 @@ else
 fi
 
 run() { "${ESPTOOL[@]}" --port "$PORT" --baud "$BAUD" --after "$NO_RESET" "$@"; }
+
+# ---------------------------------------------------------------------------
+# Choose a line rate
+# ---------------------------------------------------------------------------
+
+# Probed on every port, including the chip's own USB.
+#
+# It was tempting to skip native-USB ports on the grounds that there is no UART
+# in the path and the rate is therefore nominal. Measurement says otherwise: on
+# both an ESP32-S3 and an ESP32-P4 over USB-Serial/JTAG, 256 KB took 26 s at
+# 115200 and 3.4 s at 1500000 — a factor of nearly eight. Whatever the rate
+# means on that path, it is not decoration.
+choose_baud() {
+  local candidate
+  echo "measuring the fastest rate this link carries ($(printf '%d' $((BAUD_PROBE_SIZE))) bytes per try)" >&2
+  for candidate in $BAUD_CANDIDATES; do
+    printf '  %8s ' "$candidate" >&2
+    if "${ESPTOOL[@]}" --port "$PORT" --baud "$candidate" --after "$NO_RESET" \
+         "$CMD_READ_FLASH" 0x0 "$BAUD_PROBE_SIZE" "$CHUNK_TMP" >/dev/null 2>&1 \
+       && [ "$(wc -c <"$CHUNK_TMP")" -eq "$((BAUD_PROBE_SIZE))" ]; then
+      echo "ok" >&2
+      BAUD="$candidate"
+      return 0
+    fi
+    echo "no" >&2
+  done
+  echo "error: no rate in the candidate list could read from $PORT." >&2
+  echo "Something other than speed is wrong; see the guidance in the README." >&2
+  return 1
+}
+
 
 # ---------------------------------------------------------------------------
 # Identify the chip, so the output lands in a per-chip directory.
@@ -94,7 +139,7 @@ OUT="${OUT:-$REPO/test/fixtures/hardware/$SLUG}"
 mkdir -p "$OUT"
 
 echo "chip : $CHIP"
-echo "port : $PORT @ $BAUD"
+echo "port : $PORT"
 echo "out  : $OUT"
 echo
 
@@ -142,6 +187,13 @@ ERR_TMP="$(mktemp)"
 CHUNK_TMP="$(mktemp)"
 trap 'rm -f "$ERR_TMP" "$CHUNK_TMP"' EXIT
 
+# Reads fail intermittently on some USB paths. A whole capture is minutes of
+# work, so a transient failure retries rather than losing the region.
+ATTEMPTS="${ATTEMPTS:-3}"
+
+# How long to let another process finish with the port before giving up.
+PORT_WAIT="${PORT_WAIT:-20}"
+
 # Whatever was watching the sketch's serial output may still hold the port for
 # a moment after it exits. Reading into that fails for a reason that has
 # nothing to do with the device, so wait for it to be released first.
@@ -168,12 +220,11 @@ if command -v fuser >/dev/null 2>&1; then
   true
 fi
 
-# Reads fail intermittently on some USB paths. A whole capture is minutes of
-# work, so a transient failure retries rather than losing the region.
-ATTEMPTS="${ATTEMPTS:-3}"
-
-# How long to let another process finish with the port before giving up.
-PORT_WAIT="${PORT_WAIT:-20}"
+if [ "$BAUD" = auto ]; then
+  choose_baud || exit 1
+fi
+echo "baud : $BAUD"
+echo
 
 # esptool's own message is the only thing that explains a failure. This script
 # used to discard it, which turned every problem into the word FAILED and made

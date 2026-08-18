@@ -121,7 +121,7 @@ export class EspDevicePanel extends HTMLElement {
     // setup 115200 was less reliable than 460800. Whatever is chosen is
     // verified after connecting, so a wrong guess costs a fallback rather than
     // corrupt data.
-    const { baudRate, linkBaudRate, nativeUsb } = store.getState().device;
+    const { baudRate, linkBaudRate } = store.getState().device;
     const speed = document.createElement('label');
     speed.className = 'speed';
     speed.title = t('device.baudRate.hint');
@@ -141,18 +141,12 @@ export class EspDevicePanel extends HTMLElement {
     select.addEventListener('change', () => setBaudRate(Number(select.value)));
     speed.append(select);
 
-    // Never leave the control showing a number that is not what is happening.
-    // On the chip's own USB the rate is nominal and was never applied; on a
-    // real UART it may have been rejected and fallen back.
-    if (status === 'connected') {
+    // Never leave the control showing a number that is not what is happening:
+    // the requested rate may have been rejected and fallen back.
+    if (status === 'connected' && linkBaudRate !== null && linkBaudRate !== baudRate) {
       const actual = document.createElement('span');
-      if (nativeUsb) {
-        actual.textContent = t('device.baudRate.native');
-        select.disabled = true;
-      } else if (linkBaudRate !== null && linkBaudRate !== baudRate) {
-        actual.textContent = `→ ${linkBaudRate}`;
-      }
-      if (actual.textContent) speed.append(actual);
+      actual.textContent = `→ ${linkBaudRate}`;
+      speed.append(actual);
     }
     controls.append(speed);
 
