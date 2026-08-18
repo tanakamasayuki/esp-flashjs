@@ -11,6 +11,7 @@ import { formatByteSize, toHexAddress } from '../esp-flashjs.js';
 import { store } from '../store.js';
 import {
   assessRisk,
+  writeNvs,
   erasePartition,
   exportBytes,
   readFlashRegion,
@@ -20,6 +21,8 @@ import {
   writePartition,
 } from '../actions.js';
 import './esp-hex-viewer.js';
+import './esp-nvs-tree.js';
+import './esp-diff-view.js';
 import { openConfirm } from './esp-confirm-dialog.js';
 
 /**
@@ -29,9 +32,12 @@ import { openConfirm } from './esp-confirm-dialog.js';
  * actually open the inspector for. The details are still here, just below the
  * analysis instead of ahead of it.
  *
- * @type {Array<'analyze'|'hex'>}
+ * The diff tab is the odd one out: it compares two buffers rather than
+ * describing the current selection, so it stays available whatever is selected.
+ *
+ * @type {Array<'analyze'|'hex'|'diff'>}
  */
-const TABS = ['analyze', 'hex'];
+const TABS = ['analyze', 'hex', 'diff'];
 
 const TEMPLATE = `
 <style>
@@ -194,7 +200,12 @@ export class EspInspector extends HTMLElement {
       return;
     }
 
-    if (state.inspector.tab === 'hex') {
+    if (state.inspector.tab === 'diff') {
+      // The diff compares buffers rather than describing the selection, so it
+      // is the one tab that does not depend on what is selected.
+      this._hex = null;
+      bodyEl.replaceChildren(document.createElement('esp-diff-view'));
+    } else if (state.inspector.tab === 'hex') {
       this._renderHex(bodyEl, target);
     } else {
       this._hex = null;
@@ -343,6 +354,24 @@ export class EspInspector extends HTMLElement {
         );
       } else if (analysis.type === 'esp-image') {
         container.append(imageDetails(analysis, target.partition));
+      } else if (analysis.type === 'nvs') {
+        container.append(this._nvsTree(analysis, target));
+      } else if (
+        analysis.type === 'spiffs' ||
+        analysis.type === 'littlefs' ||
+        analysis.type === 'fat'
+      ) {
+        const tree = /** @type {import('./esp-fs-tree.js').EspFsTree} */ (
+          document.createElement('esp-fs-tree')
+        );
+        container.append(tree);
+        // The element reads its data through a method rather than an attribute:
+        // an FsImage carries lazy `read()` closures over the buffer, and those
+        // do not survive being stringified into the DOM.
+        tree.show(
+          /** @type {import('../esp-flashjs.js').FsImage} */ (analysis.model),
+          target.partition?.label ?? 'fs',
+        );
       } else if (analysis.type === 'raw' || analysis.type === 'encrypted?') {
         container.append(rawSummary(analysis));
       } else {
@@ -370,6 +399,44 @@ export class EspInspector extends HTMLElement {
     if (target.partition) container.append(this._destructiveActions(target.partition, target.data));
 
     body.replaceChildren(container);
+  }
+
+  /**
+   * @param {import('../esp-flashjs.js').AnalysisResult} analysis
+   * @param {any} target
+   * @returns {HTMLElement}
+   */
+  _nvsTree(analysis, target) {
+    const tree = /** @type {import('./esp-nvs-tree.js').EspNvsTree} */ (
+      document.createElement('esp-nvs-tree')
+    );
+    const nvs = /** @type {import('../esp-flashjs.js').NvsStore} */ (analysis.model);
+    const partition = target.partition;
+    const state = store.getState();
+    // Writing needs somewhere to write to. An image opened from a file has no
+    // partition behind it, and the stub is what makes erase and write possible
+    // at all, so both are required before the button does anything.
+    const canWrite = Boolean(
+      partition && state.device.status === 'connected' && state.device.usingStub,
+    );
+
+    tree.show(nvs, {
+      onApply: canWrite
+        ? (edited) => {
+            const changes = edited.changes();
+            openConfirm({
+              partition,
+              reasons: assessRisk(partition.offset, partition.size).reasons,
+              detail: t('confirm.nvsChanges', { count: changes.length }),
+              hasBackup: [...store.getState().buffers.values()].some(
+                (b) => b.partitionLabel === partition.label,
+              ),
+              onConfirm: () => void writeNvs(partition, edited),
+            });
+          }
+        : undefined,
+    });
+    return tree;
   }
 
   /**

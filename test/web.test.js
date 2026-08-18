@@ -10,6 +10,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { createStore, initialState } from '../web/store.js';
+import {
+  displayValue,
+  downloadName,
+  isEditableType,
+  parseValue,
+} from '../web/format-values.js';
 
 /* -------------------------------------------------------------------------- */
 /* Store                                                                       */
@@ -146,4 +152,61 @@ test('an explicit stored choice wins over the browser preference', () => {
 test('English is present and is the declared fallback', () => {
   assert.ok(LOCALES.some((l) => l.code === FALLBACK_LOCALE));
   assert.equal(new Set(LOCALES.map((l) => l.code)).size, LOCALES.length);
+});
+
+/* -------------------------------------------------------------------------- */
+/* Value conversion for the NVS editor                                         */
+/* -------------------------------------------------------------------------- */
+
+test('an edit that cannot be the declared type is rejected at the field', () => {
+  // buildNvs would refuse too, but only after the user has read a confirmation
+  // dialog and typed a partition name to get past it. Failing here costs a red
+  // outline; failing there costs their attention on a device that is about to
+  // be written.
+  assert.throws(() => parseValue('U32', '12.5'), TypeError);
+  assert.throws(() => parseValue('U32', 'abc'), TypeError);
+  assert.throws(() => parseValue('U32', ''), TypeError);
+  assert.throws(() => parseValue('U32', '   '), TypeError);
+  assert.throws(() => parseValue('U64', '1.5'), TypeError);
+  assert.throws(() => parseValue('I64', 'nope'), TypeError);
+});
+
+test('the notations someone might reasonably type are accepted', () => {
+  assert.equal(parseValue('U32', '42'), 42);
+  assert.equal(parseValue('U32', ' 42 '), 42, 'surrounding space is not an error');
+  assert.equal(parseValue('U32', '0x10'), 16);
+  assert.equal(parseValue('U32', '1e3'), 1000);
+  assert.equal(parseValue('I32', '-7'), -7);
+  assert.equal(parseValue('U64', '1122334455667788'), 1122334455667788n);
+  assert.equal(parseValue('I64', '-5000000000'), -5000000000n);
+});
+
+test('a string keeps exactly what was typed', () => {
+  // Trimming a string value would silently change data. Only the numeric
+  // parsers trim, and only because " 42 " is unambiguous.
+  assert.equal(parseValue('STR', '  padded  '), '  padded  ');
+  assert.equal(parseValue('STR', ''), '', 'an empty string is a legal NVS value');
+});
+
+test('a blob is shown as a preview, never as a value to edit', () => {
+  const short = new Uint8Array([0xde, 0xad, 0xbe, 0xef]);
+  assert.equal(displayValue({ type: 'BLOB', value: short }), 'de ad be ef');
+
+  const long = new Uint8Array(100).fill(0xa5);
+  const shown = displayValue({ type: 'BLOB', value: long });
+  assert.ok(shown.endsWith('(100 bytes)'), 'the full length is stated rather than implied');
+  assert.ok(shown.length < 120, 'and the preview stays one line');
+
+  assert.equal(isEditableType('BLOB'), false);
+  assert.equal(isEditableType('STR'), true);
+  assert.equal(isEditableType('U32'), true);
+});
+
+test('a download name survives a nested path', () => {
+  // A slash here is not a directory: browsers either strip it or refuse the
+  // download outright, so a file at /sub/nested.txt must not produce one.
+  assert.equal(downloadName('spiffs', '/sub/nested.txt'), 'spiffs_sub_nested.txt');
+  assert.equal(downloadName('ffat', '/hello.txt'), 'ffat_hello.txt');
+  assert.equal(downloadName('fs', '/'), 'fs_file', 'a path with no name still gets one');
+  assert.ok(!downloadName('fs', '/a/b/c.bin').includes('/'));
 });

@@ -289,7 +289,7 @@ export function parseNvs(data, { strict = false } = {}) {
       });
     }
 
-    const id = `${namespace} ${record.key}`;
+    const id = `${namespace}\0${record.key}`;
     if (record.erased) {
       erasedEntries.push(entry);
       live.delete(id);

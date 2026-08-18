@@ -9,6 +9,7 @@
  */
 
 import {
+  buildNvs,
   EspFlash,
   EspLoader,
   WebSerialTransport,
@@ -399,6 +400,49 @@ export async function writePartition(partition, data, { backup = true } = {}) {
 /**
  * @param {import('./esp-flashjs.js').Partition} partition
  */
+/**
+ * Rebuilds an NVS partition from an edited store and writes it back.
+ *
+ * The rebuild happens before anything is erased, and `buildNvs` re-parses its
+ * own output and compares it against the store before returning. So a value
+ * that cannot be represented, or an image that would not read back, fails
+ * while the device is still untouched — rather than half way through a write,
+ * which is the state nobody can recover from without a serial cable.
+ *
+ * Confirmation is the caller's job, as it is for every other destructive
+ * action here; this layer does not open dialogs.
+ *
+ * @param {import('./esp-flashjs.js').Partition} partition
+ * @param {import('./esp-flashjs.js').NvsStore} nvs
+ * @returns {Promise<boolean>} Whether the write went through.
+ */
+export async function writeNvs(partition, nvs) {
+  if (nvs.changes().length === 0) return false;
+
+  /** @type {Uint8Array} */
+  let image;
+  try {
+    image = buildNvs(nvs, { size: partition.size });
+  } catch (error) {
+    const err = /** @type {Error & {code?: string}} */ (error);
+    store.log('error', err.code ? `error.${err.code}` : 'error.unexpected', {
+      message: err.message,
+    });
+    return false;
+  }
+
+  await writePartition(partition, image);
+  // Re-read rather than assume. Writing through a verified build means the
+  // device should now hold what the store says; one read turns that from a
+  // claim into a fact, and refreshes the view with the erased entries the
+  // rebuild produced.
+  await readPartition(partition);
+  return true;
+}
+
+/**
+ * @param {import('./esp-flashjs.js').Partition} partition
+ */
 export async function erasePartition(partition) {
   if (!flash) return;
   const controller = new AbortController();
@@ -615,7 +659,7 @@ export function select(kind, id) {
   store.setState({ selection: { kind, id } });
 }
 
-/** @param {'analyze'|'hex'} tab */
+/** @param {'analyze'|'hex'|'diff'} tab */
 export function setInspectorTab(tab) {
   store.setState({ inspector: { tab } });
 }

@@ -1480,10 +1480,9 @@ GitHub Actions で以下を実行する。ローカルでは `npm run check` が
 - [x] NVS build（出力を読み直して突き合わせる self-check 付き）
 - [x] NVS Diff
 - [x] Analyzer への登録
-- [ ] Namespace / Key ツリー表示
-- [ ] Value 編集
-- [ ] Partition への書き戻し
-- [ ] Backup First フローの完成
+- [x] Namespace / Key ツリー表示（消去済みエントリも表示）
+- [x] Value 編集（build 時ではなく入力欄で弾く）
+- [x] Partition への書き戻し（既存のバックアップ＋確認フロー経由）
 
 ### Phase 3 — Filesystem と解析の拡充（実装済み）
 
@@ -1494,7 +1493,8 @@ GitHub Actions で以下を実行する。ローカルでは `npm run check` が
 - [x] LittleFS 解析・ファイル抽出（前倒し。同じ実機キャプチャで3形式とも取れるため、
       フェーズを分けて別々に解析するより大幅に安い）
 - [x] FAT 解析（ESP-IDF の wear levelling 層込み）
-- [ ] Diff 専用ビュー
+- [x] ファイルツリー表示とファイル単位の取り出し
+- [x] Diff 専用ビュー
 - [ ] 暗号化検出の精度向上
 
 ### Phase 4 — 拡張

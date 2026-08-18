@@ -1718,10 +1718,9 @@ See [publishing.md](./publishing.md) for the full account. In brief:
 - [x] NVS build, with a self-check that re-parses its own output
 - [x] NVS diff
 - [x] Analyzer registration
-- [ ] Namespace and key tree in the UI
-- [ ] Value editing in the UI
-- [ ] Writing back to a partition
-- [ ] Completing the backup-first flow
+- [x] Namespace and key tree in the UI, erased entries included
+- [x] Value editing in the UI, rejected at the field rather than at build time
+- [x] Writing back to a partition, through the existing backup-and-confirm path
 
 ### Phase 3 — Filesystems and deeper analysis (implemented)
 
@@ -1730,7 +1729,8 @@ See [publishing.md](./publishing.md) for the full account. In brief:
       capture yields all three filesystems, so parsing them together costs far
       less than parsing them one phase apart)
 - [x] FAT parsing, including ESP-IDF's wear-levelling layer
-- [ ] A dedicated diff view in the UI
+- [x] Filesystem tree with per-file extraction in the UI
+- [x] A dedicated diff view in the UI
 - [ ] Refining encryption detection
 
 ### Phase 4 — Extensions

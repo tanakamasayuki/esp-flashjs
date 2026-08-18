@@ -30,6 +30,7 @@ const TEMPLATE = `
        font-size: 12px; }
   dt { color: var(--fg-muted); }
   dd { margin: 0; font-family: var(--mono, ui-monospace, monospace); }
+  .detail { margin: 8px 0 0; font-size: 12px; line-height: 1.5; }
   .backup { padding: 8px 10px; border-radius: 5px; font-size: 12px; margin-bottom: 12px; }
   .backup.yes { background: color-mix(in srgb, var(--ok) 14%, transparent);
                 border-left: 3px solid var(--ok); }
@@ -53,6 +54,7 @@ const TEMPLATE = `
     <h2 id="title"></h2>
     <p id="warning"></p>
     <dl id="target"></dl>
+    <p id="detail" class="detail" hidden></p>
     <div id="backup" class="backup"></div>
     <label id="prompt" for="confirm"></label>
     <input id="confirm" type="text" autocomplete="off" spellcheck="false" />
@@ -103,10 +105,13 @@ export class EspConfirmDialog extends HTMLElement {
    * @param {object} options
    * @param {import('../esp-flashjs.js').Partition} options.partition
    * @param {string[]} options.reasons
+   * @param {string} [options.detail] What exactly will change, when the caller
+   *   can say. "Erase this partition" is self-explanatory; "write NVS" is not,
+   *   and the number of entries affected is the whole basis for deciding.
    * @param {boolean} options.hasBackup
    * @param {() => void} options.onConfirm
    */
-  open({ partition, reasons, hasBackup, onConfirm }) {
+  open({ partition, reasons, detail, hasBackup, onConfirm }) {
     const root = /** @type {ShadowRoot} */ (this.shadowRoot);
     this._onConfirm = onConfirm;
     this._word = partition.label || 'WRITE';
@@ -129,6 +134,10 @@ export class EspConfirmDialog extends HTMLElement {
       dd.textContent = value;
       target.append(dt, dd);
     }
+
+    const detailEl = /** @type {HTMLElement} */ (root.getElementById('detail'));
+    detailEl.textContent = detail ?? '';
+    detailEl.hidden = !detail;
 
     const backup = /** @type {HTMLElement} */ (root.getElementById('backup'));
     backup.className = hasBackup ? 'backup yes' : 'backup no';

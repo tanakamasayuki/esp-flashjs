@@ -19,5 +19,10 @@ export * from '../src/index.js';
  * @typedef {import('../src/format/registry.js').AnalysisResult} AnalysisResult
  * @typedef {import('../src/format/registry.js').BinaryRegion} BinaryRegion
  * @typedef {import('../src/device/device-info.js').DeviceInfo} DeviceInfo
+ * @typedef {import('../src/format/fs/types.js').FsImage} FsImage
+ * @typedef {import('../src/format/fs/types.js').FsFile} FsFile
+ * @typedef {import('../src/format/nvs/store.js').NvsStore} NvsStore
+ * @typedef {import('../src/format/nvs/parse.js').NvsEntry} NvsEntry
+ * @typedef {import('../src/format/nvs/store.js').NvsChange} NvsChange
  * @typedef {import('../src/util/events.js').Progress} Progress
  */
