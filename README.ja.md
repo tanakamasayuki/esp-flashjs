@@ -38,9 +38,9 @@ console.log(table.partitions);
 
 Phase 1 を実装済みです。Transport、ブートローダプロトコル、チップ検出、stub ロード、Flash の read / write / erase / verify / dump、パーティションテーブル、ファームウェアイメージ、OTA データ、バイナリ差分と検索、そしてリファレンス Web アプリまで動きます。
 
-[esp-flashjs@0.1.0](https://www.npmjs.com/package/esp-flashjs) として公開済みです。ただし**実機検証はまだ行っていません**（下の対応チップ表を参照）。
+[esp-flashjs@0.1.0](https://www.npmjs.com/package/esp-flashjs) として公開済みです。
 
-NVS の解析・編集（Phase 2）とファイルシステム対応（Phase 3〜4）は未実装です。[ロードマップ](./docs/spec.ja.md#22-ロードマップ)を参照してください。
+NVS（parse / build / diff）と、SPIFFS・LittleFS・FAT の読み取りも実装済みです。いずれも**自前で生成したイメージではなく、ESP32 / ESP32-S3 / ESP32-P4 の実機から吸い出したフラッシュ**でテストしています。この区別がなぜ効いたかは [テスト fixture の作り方](./tools/fixture-device/README.ja.md) に書いてあります。UI からの NVS 編集とファイルシステムの再構築はこれからです。[ロードマップ](./docs/spec.ja.md#22-ロードマップ)を参照してください。
 
 ## インストール
 
@@ -131,16 +131,18 @@ try {
 
 | チップ | 検出方法 | 実機検証 |
 | --- | --- | --- |
-| ESP32 | magic レジスタ | 未 |
+| ESP32 | magic レジスタ | 済 |
 | ESP32-S2 | magic レジスタ | 未 |
-| ESP32-S3 | chip id | 未 |
+| ESP32-S3 | chip id | 済 |
 | ESP32-C2 | chip id | 未 |
 | ESP32-C3 | chip id | 未 |
 | ESP32-C5 | chip id | 未 |
 | ESP32-C6 | chip id | 未 |
 | ESP32-C61 | chip id | 未 |
 | ESP32-H2 | chip id | 未 |
-| ESP32-P4 | chip id | 未 |
+| ESP32-P4 | chip id | 済 |
+
+「済」は、そのチップの実機を消去し、既知のパーティションテーブル・NVS・3種のファイルシステムを書き込み、読み戻してテスト fixture としてコミットした、という意味です。この3機種だけでも bootloader の位置が 0x1000 / 0x0 / 0x2000 と違っており、1機種では気づけない類の差です。
 
 ESP8266 は対象外です。プロトコルは共通部分が多いものの、パーティションテーブルやイメージ形式が別物のためです。
 

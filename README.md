@@ -49,10 +49,13 @@ loading, flash read/write/erase/verify/dump, partition tables, firmware images,
 OTA data, binary diff and search, plus the reference web app.
 
 Published as [esp-flashjs@0.1.0](https://www.npmjs.com/package/esp-flashjs).
-Nothing has been verified on real hardware yet — see the chip table below.
 
-NVS analysis and editing (Phase 2) and filesystem support (Phase 3–4) are not
-implemented yet. See [the roadmap](./docs/spec.md#22-roadmap).
+NVS (parse, build, diff) and read-only SPIFFS, LittleFS and FAT are implemented
+too, and every one of them is tested against flash captured from an ESP32, an
+ESP32-S3 and an ESP32-P4 rather than against images this project generated —
+see [test fixtures](./tools/fixture-device/README.md) for why that distinction
+turned out to matter. Editing NVS from the UI and rebuilding filesystem images
+are still to come; see [the roadmap](./docs/spec.md#22-roadmap).
 
 ## Install
 
@@ -155,16 +158,22 @@ are the same thing.
 
 | Chip | Detection | Tested on hardware |
 | --- | --- | --- |
-| ESP32 | magic register | not yet |
+| ESP32 | magic register | yes |
 | ESP32-S2 | magic register | not yet |
-| ESP32-S3 | chip id | not yet |
+| ESP32-S3 | chip id | yes |
 | ESP32-C2 | chip id | not yet |
 | ESP32-C3 | chip id | not yet |
 | ESP32-C5 | chip id | not yet |
 | ESP32-C6 | chip id | not yet |
 | ESP32-C61 | chip id | not yet |
 | ESP32-H2 | chip id | not yet |
-| ESP32-P4 | chip id | not yet |
+| ESP32-P4 | chip id | yes |
+
+"Tested" means a board of that chip was erased, provisioned with a known
+partition table, NVS contents and three filesystems, read back, and the result
+committed as a test fixture. The bootloader offset alone differs across those
+three (0x1000, 0x0 and 0x2000), which is the kind of thing one board cannot
+tell you.
 
 ESP8266 is out of scope: the protocol overlaps, but partition tables and image
 formats do not.

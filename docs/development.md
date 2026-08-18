@@ -112,10 +112,11 @@ test/
 
 Currently **113 tests, 93.6% line coverage**.
 
-### 3.3 Fixtures are generated in code
+### 3.3 Two kinds of fixture, and when each one lies
 
-`test/helpers.js` holds the builders. Generating beats committing binaries
-because the intent of each fixture stays readable.
+**Generated fixtures** live in `test/helpers.js`. Generating beats committing
+binaries when what matters is the *intent* of a case, because the intent stays
+readable.
 
 ```js
 import { singleAppPartitions, otaPartitions, partitionTableBytes,
@@ -134,9 +135,53 @@ const broken = espImageBytes({ corruptChecksum: true });
 const flash = flashImage({ size: 1024 * 1024 });
 ```
 
+**Hardware fixtures** live in `test/fixtures/hardware/<chip>/`, captured by the
+tooling in [`tools/fixture-device/`](../tools/fixture-device/README.md).
+
+Use a generated fixture to pin behaviour you have decided on. Use a hardware
+fixture to pin behaviour *someone else* has decided — every on-flash format
+here belongs to ESP-IDF, not to this project.
+
+The distinction is not academic. A generated fixture is produced by the same
+constants the parser reads, so the two agree whether or not either is right.
+Every format bug this project has shipped or nearly shipped passed a full test
+suite for exactly that reason:
+
+| Bug | Why the suite missed it |
+| --- | --- |
+| Partition magic byte order reversed | parse and build shared the wrong constant |
+| otadata CRC using the standard convention, not the ROM's | the fixture's CRC was generated the same way |
+| SPIFFS page flags read as active high | so was the fixture's writer |
+| SPIFFS object header read as a packed struct | ditto |
+| FAT read without the wear-levelling shift | no generated image had the shift |
+
+Each of those produced output that looked entirely reasonable. Read with the
+flags inverted, a SPIFFS image yields the four correct filenames and four empty
+files. Read without the wear-levelling shift, a FAT image parses its boot
+sector perfectly and reports one file whose name is bytes of the allocation
+table. Nothing about either result says "wrong".
+
+So: **when a parser reads a format this project did not invent, at least one
+test must run against bytes this project did not produce.** If that is
+impossible, say so in the test rather than substituting a generated fixture and
+letting the suite look complete.
+
+Two habits make the hardware fixtures worth their size:
+
+- **Check that the fixture exercises the hard part.** `/big.bin` was 4096 bytes
+  for a while, which is exactly one FAT cluster and one LittleFS block — so the
+  chain-following code, the most error-prone part of all three filesystem
+  parsers, was never run. Breaking the FAT12 12-bit unpack failed one unit
+  test. At 20000 bytes it fails six.
+- **Break it on purpose.** After adding a parser, reintroduce the bug you just
+  fixed and confirm the suite goes red. Twice during this work it did not, and
+  both times the missing test was for an invariant the parser itself did not
+  depend on but a device does.
+
 If you add a fixture captured from real hardware, **anonymize the MAC address,
 Wi-Fi credentials, certificates and keys** first. Removing them from git history
-afterwards is a chore.
+afterwards is a chore. The provisioning sketch writes only fixed constants for
+this reason, and the MAC lives in eFuse, outside every region captured.
 
 ### 3.4 MockTransport: the protocol without hardware
 

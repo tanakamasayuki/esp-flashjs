@@ -3,8 +3,8 @@
 [English](./spec.md) · **日本語**
 
 - 対象読者: 本リポジトリの実装者
-- ステータス: Phase 1 実装済み。本書は実装に合わせて更新してある
-- 最終更新: 2026-08-14
+- ステータス: Phase 1〜3 実装済み。ESP32 / ESP32-S3 / ESP32-P4 の実機で検証。本書は実装に合わせて更新してある
+- 最終更新: 2026-08-18
 
 関連文書: [development.ja.md](./development.ja.md)（開発・テスト） / [ci.ja.md](./ci.ja.md)（GitHub Actions） / [release.ja.md](./release.ja.md)（リリース手順） / [publishing.ja.md](./publishing.ja.md)（配布方法）
 
@@ -58,7 +58,7 @@ Device → Flash → Partition → Data Structure → Edit → Rebuild → Write
 | Partition | Partition Table 解析・生成、Partition 単位の操作 |
 | Image | ESP firmware image 解析 |
 | NVS | 解析・編集・再構築・Diff |
-| Filesystem | SPIFFS 解析（Phase 3）、LittleFS（Phase 4） |
+| Filesystem | SPIFFS / LittleFS / FAT の解析とファイル取り出し |
 | Binary | 形式自動判定、Hex View 用データ供給、Binary Diff |
 | Web | 上記すべてを GUI から利用できるリファレンス実装 |
 
@@ -104,7 +104,7 @@ Firefox / Safari では **Binary モード（ファイル読み込みによる�
 | 5 | **Flash Read / Erase Region は stub loader のロードを前提とする** | ESP32 の ROM loader は `READ_FLASH(0xd2)` / `ERASE_FLASH(0xd0)` / `ERASE_REGION(0xd1)` を持たない。Dump・Partition Read・NVS 解析がすべてこれに依存するため、Phase 1 の必須要件とする（[6.4](#64-stub-loader)） |
 | 6 | **stub JSON はバンドルに埋め込まず、実行時に fetch する** | 全チップ分を埋め込むと本体が数百 KB 肥大し、オフライン解析しかしない利用者にも負担させることになる。チップ追加も JSON を置くだけで済む |
 | 7 | **Transport は Reader/Writer ベースの非同期 I/O とし、タイムアウトと `AbortSignal` を持つ** | 実際のシリアル通信では「長さ指定の read」が成立しない。SLIP はフレーム区切りで長さが事前に確定しないため |
-| 8 | **Filesystem の再構築は Phase 4 とし、Phase 3 は SPIFFS の読み取り専用解析にとどめる** | SPIFFS 再構築は互換性リスクが高く、MVP に含めると Phase 1/2 が遅れる |
+| 8 | **Filesystem は読み取り専用とし、再構築は Phase 4** | イメージを書き戻す互換性リスクは読み取りには無い。そして機器を調べられるようにするのは読み取りのほう。3形式とも解析済み |
 | 9 | **UI は多言語対応とし、`navigator.languages` から自動判定する** | ESP32 の利用者層は国際的であり、後から i18n を導入すると全文言の洗い出しが必要になる。最初から辞書を外出しする |
 
 ---
@@ -184,7 +184,9 @@ esp-flashjs/
 │   │   ├── partition.js
 │   │   ├── image.js
 │   │   ├── otadata.js
-│   │   ├── spiffs.js         # Phase 3
+│   │   ├── fs/
+│   │   │   ├── spiffs.js / littlefs.js / fat.js
+│   │   │   └── types.js      # 3形式が返す共通の型
 │   │   └── nvs/
 │   │       ├── parse.js
 │   │       ├── build.js
@@ -795,7 +797,7 @@ analyzeBinaryAs(id, data, ctx)  // -> AnalysisResult     形式を明示指定
 ```
 
 - confidence が全て 0.3 未満なら `raw` analyzer（Hex 表示のみ）を返す。
-- 既定登録: `partition-table`, `esp-image`, `nvs`, `otadata`, `spiffs`(Phase 3), `raw`。
+- 既定登録: `partition-table`, `esp-image`, `nvs`, `otadata`, `spiffs`, `littlefs`, `fat`, `raw`。
 
 ### 9.3 confidence の基準
 
@@ -1013,33 +1015,51 @@ diffNvs(before, after)  // -> NvsChange[]
 
 ## 12. Filesystem
 
-Phase 3 で **SPIFFS の読み取り専用解析**を実装する。
+> 実装済み。3機種の実機から取得したイメージで検証。
+
+3形式とも**読み取り専用**。同じ型を返すので、UI 側はどの形式を見ているかを知る必要がない。
 
 ```js
-parseSpiffs(data, { pageSize = 256, blockSize = 4096, objNameLen = 32 })  // -> FsImage
+parseSpiffs(data, { pageSize = 256, blockSize = 4096, objNameLen = 32, detectGeometry = true })
+parseLittlefs(data, { blockSize })     // 既定はスーパーブロックの値
+parseFat(data, { wlDummySector })      // 省略時は自動判定
+// いずれも -> FsImage
 ```
 
 ```js
 /**
  * @typedef {object} FsFile
- * @property {string} path
+ * @property {string} path            先頭スラッシュ付きの絶対パス
  * @property {number} size
- * @property {() => Uint8Array} read
- * @property {number[]} pageIndices
- * @property {boolean} complete
+ * @property {() => Uint8Array} read  遅延評価。全ファイルを先読みするのは大半の用途で過剰
+ * @property {number[]} pageIndices   データの所在。hex ビュー用
+ * @property {boolean} complete       データが欠けている場合 false
+ * @property {boolean} [directory]
  */
 /**
  * @typedef {object} FsImage
- * @property {string} type       - "spiffs" | "littlefs" | "fat"
+ * @property {'spiffs'|'littlefs'|'fat'} type
  * @property {FsFile[]} files
- * @property {object} geometry
+ * @property {Record<string, number>} geometry
  * @property {Issue[]} issues
  */
 ```
 
-SPIFFS はイメージだけからページサイズ・ブロックサイズを確定できない。既定値で解析を試み、失敗したら候補（pageSize 256/512、blockSize 4096/8192）を総当たりし、最もファイル数が多く整合する組み合わせを採用する。採用したジオメトリは UI に表示し、ユーザーが手動変更できるようにする。
+### 12.1 形式ごとの固有事情
 
-Phase 4 で LittleFS 解析、SPIFFS 再構築、`Extract / Replace / Add / Delete / Rebuild` を扱う。**Rebuild は「元イメージと同一ジオメトリでの再生成」に限定**し、任意パラメータでの新規生成は行わない。
+**SPIFFS** はジオメトリを自分では記録していないため、ページサイズとブロックサイズを推定する必要がある。候補は「見つかったファイル数」ではなく「見つかったファイルが整合しているか」で採点する。誤ったジオメトリは見た目では分からない — 実イメージを 128 バイトページで読むと、**正しい4つのファイル名がすべて出たうえで中身だけが壊れる**。真のページサイズの約数なら索引ヘッダには必ず当たるためである。
+
+ページの flags は**負論理**で、ビットが 0 のときにその状態が成立する。通常論理で読むと全判定が同時に反転し、「正しい名前のファイルが4つ、全部0バイト」という完全に自然な結果になる。
+
+**LittleFS** はログである。ディレクトリは追記専用コミットを保持するブロックのペアで、現在の状態は全コミットの累積。エントリは位置で参照されるため、create / delete は以降のエントリを全部ずらす。ジオメトリは推測不要で、スーパーブロックが持っている。
+
+**FAT** は ESP-IDF では wear levelling 層の下にある。この層は1セクタを予備として確保して読み飛ばす。フォーマット直後は予備が物理セクタ1に来るため、**ブートセクタだけが素の FAT リーダの期待位置に残り、他が全部1セクタずれる**。層を無視すると BPB は完璧に読めたうえで、ルートディレクトリの位置から FAT テーブルを読むことになる。予備の位置は「BPB が示すルートディレクトリ位置に実際のディレクトリエントリが来る配置はどれか」で特定する。
+
+FAT の幅はクラスタ数で決まる。これは経験則ではなく定義であり、BPB の `fsType` 文字列は単なる注記で、嘘をついても構わないことになっている。
+
+### 12.2 再構築
+
+Phase 4 で `Extract / Replace / Add / Delete / Rebuild` を扱う。**Rebuild は「元イメージと同一ジオメトリでの再生成」に限定**し、任意パラメータでの新規生成は行わない。
 
 ---
 
@@ -1454,28 +1474,32 @@ GitHub Actions で以下を実行する。ローカルでは `npm run check` が
 - [x] npm 公開（[v0.1.0](https://www.npmjs.com/package/esp-flashjs)、2026-08-16）
 - [ ] 実機での検証
 
-### Phase 2 — NVS
+### Phase 2 — NVS（実装済み）
 
-- [ ] NVS parse
+- [x] NVS parse
+- [x] NVS build（出力を読み直して突き合わせる self-check 付き）
+- [x] NVS Diff
+- [x] Analyzer への登録
 - [ ] Namespace / Key ツリー表示
 - [ ] Value 編集
-- [ ] NVS build（self-check 付き）
 - [ ] Partition への書き戻し
-- [ ] NVS Diff
 - [ ] Backup First フローの完成
 
-### Phase 3 — 解析の拡充
+### Phase 3 — Filesystem と解析の拡充（実装済み）
 
-- [ ] ESP Firmware Image 解析
-- [ ] otadata 解析
-- [ ] Binary Diff
-- [ ] SPIFFS 読み取り解析・ファイル抽出
-- [ ] 暗号化検出
+- [x] ESP Firmware Image 解析
+- [x] otadata 解析
+- [x] Binary Diff
+- [x] SPIFFS 読み取り解析・ファイル抽出
+- [x] LittleFS 解析・ファイル抽出（前倒し。同じ実機キャプチャで3形式とも取れるため、
+      フェーズを分けて別々に解析するより大幅に安い）
+- [x] FAT 解析（ESP-IDF の wear levelling 層込み）
+- [ ] Diff 専用ビュー
+- [ ] 暗号化検出の精度向上
 
 ### Phase 4 — 拡張
 
-- [ ] SPIFFS 再構築
-- [ ] LittleFS
+- [ ] SPIFFS / LittleFS / FAT の再構築
 - [ ] Analyzer Plugin API の公開・ドキュメント化
 - [ ] NodeSerialTransport / WebUSBTransport
 - [ ] ESP8266 サポートの再検討
@@ -1487,7 +1511,7 @@ GitHub Actions で以下を実行する。ローカルでは `npm run check` が
 
 | # | 事項 | 備考 |
 | --- | --- | --- |
-| 1 | **実機検証** | 現状すべて未検証。特に reset シーケンスと READ_FLASH のフロー制御は、MockTransport では本質的に検証できない。手元のボードを教えてもらい README の対応表に反映する |
+| 1 | **実機検証** | ESP32 / ESP32-S3 / ESP32-P4 について解決。各機を消去・書き込み・吸い出しし、そのキャプチャをパーサのテスト fixture としている。reset タイミングと READ_FLASH のフロー制御、および MockTransport では捕まえられなかったパーサのバグ5件がこれで確定した。他のチップは未検証のままで、README にもそう書いてある |
 | 2 | パッケージ分割の是非と時期 | Phase 4 で判断。それまではディレクトリ境界で規律を保つ |
 | 3 | LittleFS の実装方針 | 自前実装か、既存 JS 実装の移植か |
 | 4 | 追加言語 | ko / de / fr / es / pt-BR / ru。翻訳は JSON を 1 つ足すだけで済む |

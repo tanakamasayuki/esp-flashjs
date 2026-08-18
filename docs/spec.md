@@ -3,8 +3,8 @@
 **English** · [日本語](./spec.ja.md)
 
 - Audience: implementers working on this repository
-- Status: Phase 1 implemented; this document has been updated to match the code
-- Last updated: 2026-08-14
+- Status: Phases 1–3 implemented and verified against ESP32, ESP32-S3 and ESP32-P4 hardware; this document has been updated to match the code
+- Last updated: 2026-08-18
 
 Related: [development.md](./development.md) (development and testing) / [ci.md](./ci.md) (GitHub Actions) / [release.md](./release.md) (release procedure) / [publishing.md](./publishing.md) (distribution)
 
@@ -68,7 +68,7 @@ ESP32's flash structure visually from a browser.
 | Partition | Partition table parsing and generation, per-partition operations |
 | Image | ESP firmware image parsing |
 | NVS | Parsing, editing, rebuilding, diffing |
-| Filesystem | SPIFFS parsing (Phase 3), LittleFS (Phase 4) |
+| Filesystem | SPIFFS, LittleFS and FAT parsing and extraction |
 | Binary | Format detection, data for hex views, binary diff |
 | Web | A reference implementation exposing all of the above through a GUI |
 
@@ -129,7 +129,7 @@ re-litigated mid-implementation.
 | 5 | **Flash read and region erase require the stub loader** | The ESP32 ROM loader has no `READ_FLASH(0xd2)`, `ERASE_FLASH(0xd0)` or `ERASE_REGION(0xd1)`. Dump, partition read and NVS analysis all depend on it, making it a Phase 1 requirement ([6.4](#64-the-flasher-stub)) |
 | 6 | **Stub JSON is fetched at runtime, never inlined** | Inlining every chip would add a few hundred KB to the bundle and charge it to people doing offline analysis only. Adding a chip becomes "drop in a JSON file" |
 | 7 | **Transport is Reader/Writer-based async I/O with timeouts and `AbortSignal`** | A "read N bytes" interface does not survive contact with real serial I/O: SLIP is delimited, so the length is not known in advance |
-| 8 | **Filesystem rebuilding is Phase 4; Phase 3 is read-only SPIFFS analysis** | SPIFFS rebuilding carries high compatibility risk, and including it in the MVP would delay Phases 1 and 2 |
+| 8 | **Filesystems are read-only; rebuilding is Phase 4** | Writing a filesystem image carries compatibility risk that reading does not, and reading is what makes a device inspectable. All three formats are parsed |
 | 9 | **The UI is multilingual, detecting from `navigator.languages`** | The ESP32 audience is international, and retrofitting i18n means auditing every string. The catalogue is externalized from the start |
 
 ---
@@ -213,8 +213,10 @@ esp-flashjs/
 │   │   ├── partition.js
 │   │   ├── image.js
 │   │   ├── otadata.js
-│   │   ├── spiffs.js         # Phase 3
-│   │   └── nvs/              # Phase 2
+│   │   ├── fs/
+│   │   │   ├── spiffs.js / littlefs.js / fat.js
+│   │   │   └── types.js      # the shape all three return
+│   │   └── nvs/
 │   │       ├── parse.js / build.js / store.js / diff.js
 │   │
 │   ├── binary/
@@ -912,7 +914,7 @@ analyzeBinaryAs(id, data, ctx)  // -> AnalysisResult, format specified explicitl
 
 - If every confidence is below 0.3, the `raw` analyzer answers (hex view only).
 - Registered by default: `partition-table`, `esp-image`, `otadata`,
-  `spiffs` (Phase 3), `nvs` (Phase 2), `raw`.
+  `spiffs`, `littlefs`, `fat`, `nvs`, `raw`.
 - A detector that throws is simply not a match; it must never break the sweep.
   If detection succeeds but parsing then throws, the failure is reported against
   the raw view rather than surfacing as an exception.
@@ -999,7 +1001,7 @@ partition N bytes / M bytes free (X%)".
 
 ## 11. NVS
 
-> Phase 2. Specified here; not yet implemented.
+> Implemented and verified against NVS partitions captured from three chips.
 
 ### 11.1 Format
 
@@ -1160,43 +1162,75 @@ A type-only change is still `modified`, expressed through
 
 ---
 
-## 12. Filesystem
+## 12. Filesystems
 
-> Phase 3 onwards. Specified here; not yet implemented.
+> Implemented and verified against images captured from three chips.
 
-Phase 3 implements **read-only SPIFFS analysis**.
+All three formats are **read-only**. Each returns the same shape, so the UI
+does not have to know which one it is looking at.
 
 ```js
-parseSpiffs(data, { pageSize = 256, blockSize = 4096, objNameLen = 32 })  // -> FsImage
+parseSpiffs(data, { pageSize = 256, blockSize = 4096, objNameLen = 32, detectGeometry = true })
+parseLittlefs(data, { blockSize })     // blockSize comes from the superblock
+parseFat(data, { wlDummySector })      // detected when not given
+// all -> FsImage
 ```
 
 ```js
 /**
  * @typedef {object} FsFile
- * @property {string} path
+ * @property {string} path            Absolute, with a leading slash.
  * @property {number} size
- * @property {() => Uint8Array} read
- * @property {number[]} pageIndices
- * @property {boolean} complete
+ * @property {() => Uint8Array} read  Lazy: reading every file up front costs
+ *                                    more than most callers need.
+ * @property {number[]} pageIndices   Where the data lives, for a hex view.
+ * @property {boolean} complete       False when some of the data is missing.
+ * @property {boolean} [directory]
  */
 /**
  * @typedef {object} FsImage
- * @property {string} type       - "spiffs" | "littlefs" | "fat"
+ * @property {'spiffs'|'littlefs'|'fat'} type
  * @property {FsFile[]} files
- * @property {object} geometry
+ * @property {Record<string, number>} geometry
  * @property {Issue[]} issues
  */
 ```
 
-Page and block size cannot be determined from a SPIFFS image alone. Try the
-defaults, and on failure sweep the candidates (pageSize 256/512, blockSize
-4096/8192) and take the combination that yields the most files while staying
-consistent. Show the chosen geometry in the UI and let the user override it.
+### 12.1 What each format needs that the others do not
 
-Phase 4 covers LittleFS parsing, SPIFFS rebuilding and
-`Extract / Replace / Add / Delete / Rebuild`. **Rebuild is restricted to
-regenerating at the original image's geometry**; creating an image from
-arbitrary parameters is out of scope.
+**SPIFFS** records nothing about its own geometry, so page and block size have
+to be inferred. Candidates are scored on whether the files they find hold
+together — not on how many they find. A wrong geometry is not obviously wrong:
+read with 128-byte pages, a real image yields all four correct filenames and
+scrambled contents, because a divisor of the true page size still lands on
+every object index header.
+
+Its page flags are **active low**: a cleared bit is what asserts the flag. Read
+the usual way round, every decision inverts at once and the image parses as a
+set of correctly named, empty files.
+
+**LittleFS** is a log. A directory is a pair of blocks holding append-only
+commits, and its current state is the sum of them; entries are addressed by a
+position that earlier commits can shift, so a create or delete moves every
+later entry. Geometry is not guessed — the superblock states it.
+
+**FAT** on ESP-IDF sits under a wear-levelling layer that holds one sector
+spare and skips it. On a freshly formatted partition that spare lands at
+physical sector 1, which leaves the boot sector exactly where a plain FAT
+reader looks and everything else one sector out. Ignoring the layer therefore
+parses the BPB perfectly and then reads the file allocation table as if it were
+the root directory. The spare is located by testing which position puts real
+directory entries where the BPB says the root directory is.
+
+The FAT width is decided by cluster count, which is the definition rather than
+a heuristic; the `fsType` string in the BPB is documentation and is allowed to
+lie.
+
+### 12.2 Rebuilding
+
+Phase 4 covers `Extract / Replace / Add / Delete / Rebuild`. **Rebuild is
+restricted to regenerating at the original image's geometry**; creating an
+image from arbitrary parameters is out of scope.
 
 ---
 
@@ -1676,28 +1710,32 @@ See [publishing.md](./publishing.md) for the full account. In brief:
 - [x] Build scripts and site assembly for GitHub Pages
 - [x] CI (tests / types / layers / locales)
 - [x] npm publication ([v0.1.0](https://www.npmjs.com/package/esp-flashjs), 2026-08-16)
-- [ ] Verification on real hardware
+- [x] Verification on real hardware (ESP32, ESP32-S3, ESP32-P4)
 
-### Phase 2 — NVS
+### Phase 2 — NVS (implemented)
 
-- [ ] NVS parsing
-- [ ] Namespace and key tree
-- [ ] Value editing
-- [ ] NVS build (with self-check)
+- [x] NVS parsing
+- [x] NVS build, with a self-check that re-parses its own output
+- [x] NVS diff
+- [x] Analyzer registration
+- [ ] Namespace and key tree in the UI
+- [ ] Value editing in the UI
 - [ ] Writing back to a partition
-- [ ] NVS diff
 - [ ] Completing the backup-first flow
 
-### Phase 3 — Deeper analysis
+### Phase 3 — Filesystems and deeper analysis (implemented)
 
-- [ ] SPIFFS parsing and file extraction
+- [x] SPIFFS parsing and file extraction
+- [x] LittleFS parsing and file extraction (pulled forward: the same hardware
+      capture yields all three filesystems, so parsing them together costs far
+      less than parsing them one phase apart)
+- [x] FAT parsing, including ESP-IDF's wear-levelling layer
 - [ ] A dedicated diff view in the UI
 - [ ] Refining encryption detection
 
 ### Phase 4 — Extensions
 
-- [ ] SPIFFS rebuilding
-- [ ] LittleFS
+- [ ] SPIFFS / LittleFS / FAT rebuilding
 - [ ] Publishing and documenting the analyzer plugin API
 - [ ] NodeSerialTransport / WebUSBTransport
 - [ ] Reconsidering ESP8266 support
@@ -1709,7 +1747,7 @@ See [publishing.md](./publishing.md) for the full account. In brief:
 
 | # | Question | Notes |
 | --- | --- | --- |
-| 1 | **Hardware verification** | Nothing is verified yet. Reset sequence timing and READ_FLASH flow control in particular cannot be established with MockTransport. Which boards are available determines what the README table can claim |
+| 1 | **Hardware verification** | Resolved for ESP32, ESP32-S3 and ESP32-P4: each was erased, provisioned and captured, and those captures are the fixtures the parsers are tested against. It settled reset timing, READ_FLASH flow control and five parser bugs that MockTransport could not have caught. The other chips remain unverified and the README says so |
 | 2 | Whether and when to split packages | Decide in Phase 4. Until then, discipline comes from the directory boundaries |
 | 3 | How to implement LittleFS | Write it, or port an existing JS implementation |
 | 4 | Additional languages | ko / de / fr / es / pt-BR / ru. Each is one JSON file |
