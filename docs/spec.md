@@ -654,7 +654,14 @@ await loader.disconnect({ reset: true });
 const flash = new EspFlash(loader);
 
 await flash.getInfo();                                      // -> DeviceInfo
-await flash.read(address, size, { onProgress, signal });    // -> Uint8Array; stub required
+await flash.read(address, size, { onProgress, signal, chunkSize, attempts });
+//   -> Uint8Array; stub required
+//
+// A READ_FLASH transfer is all-or-nothing: the stub sends one MD5 for the
+// whole range, so a single lost byte discards everything read so far. Reads
+// are therefore split into chunkSize pieces (256 KB by default), each retried
+// up to `attempts` times (3). A link that drops bytes at all can never deliver
+// a multi-megabyte range in one transfer, however often it is retried.
 await flash.write(address, data, { compress = true, verify = false, onProgress, signal });
 await flash.eraseRegion(address, size);                     // stub required, 4 KB aligned
 await flash.eraseAll();

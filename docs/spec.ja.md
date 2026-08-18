@@ -566,7 +566,14 @@ await loader.disconnect({ reset: true });
 const flash = new EspFlash(loader);
 
 await flash.getInfo();                                      // -> DeviceInfo
-await flash.read(address, size, { onProgress, signal });    // -> Uint8Array  ※ stub 必須
+await flash.read(address, size, { onProgress, signal, chunkSize, attempts });
+//   -> Uint8Array  ※ stub 必須
+//
+// READ_FLASH の1転送は all-or-nothing です。stub は範囲全体に対して MD5 を
+// 1つ返すため、1バイト落ちただけでそれまで読んだぶんが全部破棄されます。
+// そこで読み出しは chunkSize（既定 256KB）ごとに分割し、各チャンクを
+// attempts 回（既定 3）まで再試行します。バイトを落とすリンクでは、
+// 何度リトライしても数MBを1転送で通すことはできません。
 await flash.write(address, data, { compress = true, verify = false, onProgress, signal });
 await flash.eraseRegion(address, size);                     // ※ stub 必須、4KB 境界
 await flash.eraseAll();

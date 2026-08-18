@@ -80,8 +80,87 @@ The chip is detected automatically and the files land in
 | --- | --- | --- |
 | `PORT` | required | Serial port |
 | `CHIP` | auto-detected | Force `esp32`, `esp32s3`, `esp32p4`, … |
-| `BAUD` | `921600` | Lower to `115200` if reads fail |
+| `BAUD` | `115200` | Read speed. **Deliberately slow** — see below |
+| `WHOLE` | `1` | Read the whole flash once and slice locally; `0` reads region by region |
+| `ATTEMPTS` | `3` | Retries per chunk |
+| `CHUNK` | `0x40000` | Bytes per esptool invocation (256 KB) |
+| `MIN_CHUNK` | `0x4000` | Chunks halve down to this before giving up |
+| `PORT_WAIT` | `20` | Seconds to wait for another process to release the port |
+| `APP_HEAD` | `0x10000` | Bytes captured from the head of each app partition |
+| `KEEP_IMAGE` | `0` | `1` keeps the unsliced `flash.bin` (4 MB) as well |
 | `OUT` | `test/fixtures/hardware/<chip>/` | Output directory |
+
+When a read fails, esptool's full output is kept in `<out>/capture.log`.
+
+### When reads fail
+
+**First check that nothing else holds the port.** A serial port cannot be
+shared: two processes reading one port consume each other's replies, and the
+result looks exactly like a bad link. capture.sh names the offending process
+and refuses to start, but a serial monitor or an esptool in another terminal is
+yours to close.
+
+```sh
+fuser -v "$PORT"
+```
+
+
+esptool's read is all-or-nothing: one dropped byte and the whole transfer is
+discarded.
+
+```
+A fatal error occurred: Corrupt data, expected 0x1000 bytes but received 0xff5 bytes.
+```
+
+That message means the *link* is losing bytes, not that the baud rate is too
+high. Retrying a 4 MB read will never succeed; only reading less at a time
+will. `CHUNK` plus the halving retry does that automatically.
+
+**Slower is not safer.** Measured on a real ESP32 (CH340-class bridge, over a
+WSL2 usbip passthrough), four 256 KB reads at each rate:
+
+| baud | ok |
+| --- | --- |
+| 115200 | 2/4 |
+| 230400 | 1/4 |
+| 250000 | 0/4 |
+| **460800** | **4/4** |
+| 500000 | 0/4 |
+| 750000 | 0/4 |
+| 921600 | 0/4 |
+| 1500000 | 0/4 |
+
+Sort that by speed and there is no pattern. 115200 is not the best, and rates
+that work sit between rates that do not. It also disposes of the tempting
+theory that rates dividing the bridge clock exactly should fare better:
+250000, 500000, 750000 and 1500000 all divide 12 MHz without remainder, and
+all of them failed outright. **Measure rather than reason about it:**
+
+```sh
+for b in 115200 230400 250000 460800 500000 750000 921600 1500000; do
+  esptool --port "$PORT" --baud $b read-flash 0x0 0x40000 /tmp/t.bin >/dev/null 2>&1 \
+    && echo "$b ok" || echo "$b FAILED"
+done
+```
+
+If `/sys/bus/usb-serial/devices/ttyUSB*` resolves under `vhci_hcd`, the port is
+a usbip passthrough (this is how WSL2 sees USB devices), which drops bytes far
+more readily than a direct connection. Running esptool on the host side and
+copying the `.bin` files across is faster and more reliable.
+
+**Why `WHOLE` defaults to 1:** reading region by region means a reset, a sync
+and a stub upload per region — nine independent chances for the link to drop
+during one capture. On a real ESP32 five of the nine regions failed, and the
+failures correlated with neither size nor order: spiffs and littlefs are both
+320 KB, and one succeeded while the other did not. Reading once spends the same
+time on the wire, risks the link only once, and lets the stub's MD5 cover the
+whole image in a single check.
+
+**Why the baud default is slow:** capturing is the one step where a corrupted byte
+becomes a committed fixture, and 921600 is unreliable on ESP32 boards with a
+CP2102-class bridge. A full 4 MB dump takes minutes at 115200; not having to
+wonder whether the bytes are real is worth more than the time. Raise it with
+`BAUD=460800` only when you are in a hurry.
 
 For several boards in a row:
 
@@ -101,16 +180,20 @@ PORT=/dev/ttyACM1 ./tools/fixture-device/capture.sh   # ESP32-P4
 | `partition-table.bin` | `0x8000` | Entry magic byte order, MD5 |
 | `nvs.bin` | 20 KB | Every type, split blobs, overwrites, deletes, page spill |
 | `otadata.bin` | 8 KB | The ROM CRC convention. With no factory partition the bootloader really does write this |
-| `app0.bin` | 1.25 MB | Image header, segments, SHA-256, app description |
-| `app1.bin` | 1.25 MB | Unwritten, so erased flash has a reference too |
+| `app0.bin` | 64 KB | Image header, segments, SHA-256, app description |
+| `app1.bin` | 64 KB | Unwritten, so erased flash has a reference too |
 | `spiffs.bin` | 320 KB | SPIFFS |
 | `littlefs.bin` | 320 KB | LittleFS |
 | `ffat.bin` | 832 KB | FAT with wear levelling |
 | `MANIFEST.txt` | — | Chip, timestamp, esptool version, sha256 of each file |
 
-`app0.bin` and `app1.bin` are 1.25 MB each. app0 is the compiled sketch and
-therefore depends on your toolchain, so **decide separately whether to commit
-it** — the first 64 KB is enough to exercise image parsing.
+App partitions are captured head-only (`APP_HEAD`, default 64 KB). Everything
+the image parser needs — magic, segment table, chip id, the SHA-256 marker,
+the app description block — is in the first few KB; the rest is compiled code,
+which is environment-specific and the only part of the fixture set that does
+not compress. Measured across three chips, app0 alone was 96% of what these
+fixtures cost the repository. git squeezes the 0xFF-heavy regions to nothing,
+so the whole set is 4.9 MB on disk and about 126 KB packed.
 
 ---
 

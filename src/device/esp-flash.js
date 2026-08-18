@@ -17,6 +17,7 @@ import {
   OutOfRangeError,
   UnsupportedOperationError,
   throwIfAborted,
+  OperationAbortedError,
 } from '../util/errors.js';
 import { readDeviceInfo } from './device-info.js';
 
@@ -31,9 +32,25 @@ export const FLASH_SECTOR_SIZE = 0x1000;
 export const READ_BLOCK_SIZE = 0x1000;
 
 /**
+ * How much a single READ_FLASH transfer covers.
+ *
+ * A transfer is all-or-nothing: the stub sends one MD5 for the whole range, so
+ * a single lost byte discards everything read so far. Over a link that drops
+ * bytes at all, a multi-megabyte read therefore never completes however often
+ * it is retried, while a quarter-megabyte one succeeds routinely. Splitting the
+ * range makes progress survive a hiccup instead of restarting from zero.
+ */
+export const READ_CHUNK_SIZE = 0x40000;
+
+/** Attempts per chunk before a read is reported as failed. */
+export const READ_ATTEMPTS = 3;
+
+/**
  * @typedef {object} OperationOptions
  * @property {ProgressCallback} [onProgress]
  * @property {AbortSignal} [signal]
+ * @property {number} [chunkSize] Bytes per READ_FLASH transfer.
+ * @property {number} [attempts] Tries per chunk before the read fails.
  */
 
 export class EspFlash {
@@ -72,13 +89,66 @@ export class EspFlash {
    * @returns {Promise<Uint8Array>}
    * @throws {UnsupportedOperationError} Without the stub loaded.
    */
-  async read(address, size, { onProgress, signal } = {}) {
+  async read(
+    address,
+    size,
+    { onProgress, signal, chunkSize = READ_CHUNK_SIZE, attempts = READ_ATTEMPTS } = {},
+  ) {
     if (!this.loader.isStub) throw UnsupportedOperationError.requiresStub('Flash read');
     this.checkRange(address, size);
     if (size === 0) return new Uint8Array(0);
 
     const progress = createProgressReporter(onProgress, 'reading', size);
     const out = new Uint8Array(size);
+    let done = 0;
+
+    while (done < size) {
+      const length = Math.min(chunkSize, size - done);
+      let failure;
+      for (let attempt = 1; attempt <= attempts; attempt++) {
+        throwIfAborted(signal, 'reading');
+        try {
+          await this.readChunk(address + done, out.subarray(done, done + length), {
+            signal,
+            onBytes: (n) => progress.report(done + n),
+          });
+          failure = undefined;
+          break;
+        } catch (error) {
+          if (error instanceof OperationAbortedError) throw error;
+          failure = error;
+          // The stub is very likely still streaming the remainder of the
+          // transfer it just failed. Those bytes would be decoded as the reply
+          // to the retry, so drop them before asking again.
+          await this.loader.resync({ settleMs: 100 });
+          this.loader.log('warn', 'flash.readRetry', {
+            address: address + done,
+            attempt,
+            attempts,
+            message: /** @type {Error} */ (error).message,
+          });
+        }
+      }
+      if (failure) throw failure;
+      done += length;
+    }
+
+    progress.finish();
+    return out;
+  }
+
+  /**
+   * One READ_FLASH transfer, verified end to end by the stub's own MD5.
+   *
+   * @param {number} address
+   * @param {Uint8Array} out Exactly the range to fill.
+   * @param {object} [options]
+   * @param {AbortSignal} [options.signal]
+   * @param {(bytes: number) => void} [options.onBytes]
+   * @returns {Promise<void>}
+   */
+  async readChunk(address, out, { signal, onBytes } = {}) {
+    const size = out.length;
     let received = 0;
 
     // READ_FLASH streams the data back as a series of unsolicited SLIP frames.
@@ -107,7 +177,7 @@ export class EspFlash {
       const take = Math.min(frame.length, size - received);
       out.set(frame.subarray(0, take), received);
       received += take;
-      progress.report(received);
+      onBytes?.(received);
 
       // The acknowledgement is itself a SLIP frame — sending the four raw bytes
       // leaves the stub waiting forever, which stalls the transfer.
@@ -127,9 +197,6 @@ export class EspFlash {
       // possible outcome for a tool people trust with firmware.
       throw new ChecksumError('flash read', expected, actual);
     }
-
-    progress.finish();
-    return out;
   }
 
   /**

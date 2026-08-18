@@ -22,7 +22,7 @@ import {
   PARTITION_TABLE_OFFSET,
   PARTITION_TABLE_SIZE,
 } from './esp-flashjs.js';
-import { store } from './store.js';
+import { store, BAUD_RATES, rememberBaudRate } from './store.js';
 import { t } from './i18n.js';
 
 /** @type {EspLoader|null} */
@@ -70,8 +70,23 @@ export async function connect() {
     flash = new EspFlash(loader);
     const info = await flash.getInfo();
 
+    // Only now, with the stub running, is it worth going faster — and only if
+    // there is a UART in the path at all.
+    const requested = store.getState().device.baudRate;
+    const nativeUsb = transport.isNativeUsb;
+    const linkBaudRate = nativeUsb ? null : await raiseLinkSpeed(requested);
+    if (nativeUsb) store.log('info', 'op.linkNative');
+
     store.setState({
-      device: { status: 'connected', info, usingStub: loader.isStub, error: null },
+      device: {
+        status: 'connected',
+        info,
+        usingStub: loader.isStub,
+        error: null,
+        baudRate: requested,
+        linkBaudRate,
+        nativeUsb,
+      },
       flash: { size: info.flashSize },
     });
     store.log('info', 'op.connected');
@@ -92,15 +107,73 @@ export async function connect() {
         info: null,
         usingStub: false,
         error: cancelled ? null : err.message,
+        baudRate: store.getState().device.baudRate,
+        linkBaudRate: null,
+        nativeUsb: false,
       },
     });
   }
 }
 
+/**
+ * Raises the line rate, but only if the link actually carries it.
+ *
+ * Falling back to a fixed "safe" rate would be wrong: measured on real
+ * hardware, 115200 is not the most reliable rate — it was worse than 460800 on
+ * the same board and cable, and the relationship is not monotonic. So the only
+ * defensible move is to try what was asked for and keep it only if a real
+ * transfer survives.
+ *
+ * The test is a small flash read, which the stub covers with its own MD5. That
+ * makes a bad link a thrown error rather than plausible-looking wrong bytes,
+ * which is what makes trying safe at all. One attempt, deliberately: retrying
+ * here would mask exactly the flakiness being measured.
+ *
+ * @param {number} requested
+ * @returns {Promise<number>} The rate the link ended up at.
+ */
+async function raiseLinkSpeed(requested) {
+  const current = BAUD_RATES[0];
+  if (!loader || !flash || requested === current) return current;
+
+  try {
+    await loader.changeBaudRate(requested);
+    await flash.read(0, 0x1000, { attempts: 1 });
+    store.log('info', 'op.linkFast', { baudRate: requested });
+    return requested;
+  } catch {
+    try {
+      await loader.changeBaudRate(current);
+    } catch {
+      // If even going back fails the connection is beyond saving; the caller's
+      // error handling will close it.
+    }
+    store.log('warn', 'op.linkFallback', { baudRate: requested, fallback: current });
+    return current;
+  }
+}
+
+/**
+ * @param {number} baudRate
+ */
+export function setBaudRate(baudRate) {
+  if (!BAUD_RATES.includes(baudRate)) return;
+  rememberBaudRate(baudRate);
+  store.setState({ device: { ...store.getState().device, baudRate } });
+}
+
 export async function disconnect() {
   await safeClose();
   store.setState({
-    device: { status: 'disconnected', info: null, usingStub: false, error: null },
+    device: {
+      status: 'disconnected',
+      info: null,
+      usingStub: false,
+      error: null,
+      baudRate: store.getState().device.baudRate,
+      linkBaudRate: null,
+      nativeUsb: false,
+    },
     flash: { size: null },
     partitions: { table: null, source: null },
     partitionStates: new Map(),

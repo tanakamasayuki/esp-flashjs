@@ -23,10 +23,19 @@
 // value here is a fixed constant. No timestamps, no random data, no MAC.
 static const char *STR_VALUE = "hello NVS";
 static const uint16_t SMALL_BLOB = 64;
-// Above 4032 bytes a blob no longer fits one page, so IDF splits it into a
-// BLOB_IDX plus several BLOB_DATA chunks. That path is the one worth pinning.
-static const uint16_t BIG_BLOB = 9000;
-static const uint16_t MANY_KEYS = 200; // > 126 entries, so pages must spill
+// These two are budgeted against the nvs partition, not chosen freely.
+//
+// A 20 KB nvs is 5 pages of 126 entries, and IDF keeps one page free for
+// garbage collection, so 504 entries are usable. Blob payload costs one entry
+// per 32 bytes: the original 9000-byte blob alone took 285, which with 200
+// keys filled the partition exactly. Two keys did not fit, and — worse — the
+// GC that ran to make room reclaimed the erased entries, destroying the very
+// overwrite-and-delete cases this fixture exists to capture.
+//
+// The sizes below cost roughly 330 of 504, leaving the erased entries in place
+// while still crossing every boundary that matters.
+static const uint16_t BIG_BLOB = 5000;  // > 4032, so still BLOB_IDX + chunks
+static const uint16_t MANY_KEYS = 150;  // > 126 entries, so pages must spill
 
 static uint8_t bigBlob[BIG_BLOB];
 

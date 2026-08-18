@@ -18,6 +18,13 @@ import { delay } from './transport.js';
  */
 
 /**
+ * Espressif Systems' USB vendor id. Ports enumerating under it are the chip
+ * speaking USB directly (USB-Serial/JTAG on C3/S3/C6/H2/P4, USB CDC on S2/S3);
+ * a separate bridge chip always enumerates under its own maker's id.
+ */
+export const ESPRESSIF_USB_VENDOR_ID = 0x303a;
+
+/**
  * @implements {Transport}
  */
 export class WebSerialTransport {
@@ -101,6 +108,22 @@ export class WebSerialTransport {
   }
 
   /** @returns {string} */
+  /**
+   * Whether the port is the chip's own USB peripheral rather than a bridge.
+   *
+   * On a USB-Serial/JTAG or USB CDC port there is no UART between host and
+   * chip, so the line rate is nominal: setting it changes nothing about how
+   * fast bytes move, and going through with a change means closing and
+   * reopening the port for no gain. Espressif's vendor id is enough to tell —
+   * every one of these ports enumerates under it, whereas a CP210x, CH340 or
+   * FTDI bridge enumerates under its own maker's.
+   *
+   * @returns {boolean}
+   */
+  get isNativeUsb() {
+    return this.port.getInfo?.()?.usbVendorId === ESPRESSIF_USB_VENDOR_ID;
+  }
+
   get description() {
     const info = this.port.getInfo?.();
     if (info?.usbVendorId !== undefined) {

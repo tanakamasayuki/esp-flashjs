@@ -13,6 +13,7 @@ import {
 import { chipByName, chipByImageId, chipByMagic, CHIPS } from '../src/protocol/chips.js';
 import { EspLoader } from '../src/protocol/loader.js';
 import { EspFlash } from '../src/device/esp-flash.js';
+import { ChecksumError } from '../src/util/errors.js';
 import { MockTransport } from '../src/testing/mock-transport.js';
 import {
   AlignmentError,
@@ -468,4 +469,71 @@ test('disconnect leaves the transport closed', async () => {
   assert.equal(transport.isOpen(), false);
   assert.equal(loader.isStub, false);
   assert.equal(loader.chip, null);
+});
+
+/* -------------------------------------------------------------------------- */
+/* Reading over a link that drops bytes                                        */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The stub verifies each transfer with its own MD5, so a dropped byte is a
+ * rejected read rather than silent corruption. That makes retrying safe — and
+ * necessary, because a link that drops bytes at all will never deliver a large
+ * range in one go.
+ */
+async function flakyFlash(options) {
+  const transport = new MockTransport({ chip: 'ESP32-S3', ...options });
+  const loader = new EspLoader(transport);
+  await loader.connect();
+  await loader.loadStub();
+  for (let i = 0; i < transport.flash.length; i++) transport.flash[i] = (i * 7 + 3) & 0xff;
+  return { transport, loader, flash: new EspFlash(loader) };
+}
+
+test('a read that loses bytes is retried and returns the right data', async () => {
+  const { transport, flash } = await flakyFlash({ flakyReads: 1 });
+
+  const data = await flash.read(0x1000, 0x2000);
+
+  assert.equal(transport.droppedReads, 1, 'the mock should have spoiled one transfer');
+  assert.equal(data.length, 0x2000);
+  for (let i = 0; i < data.length; i++) {
+    assert.equal(data[i], ((0x1000 + i) * 7 + 3) & 0xff, `byte ${i} survived the retry`);
+  }
+});
+
+test('a read gives up once its attempts are exhausted', async () => {
+  const { flash } = await flakyFlash({ flakyReads: 5 });
+
+  await assert.rejects(
+    () => flash.read(0x1000, 0x2000, { attempts: 2 }),
+    (error) => error instanceof ChecksumError,
+  );
+});
+
+test('progress never goes backwards across a retry', async () => {
+  const { flash } = await flakyFlash({ flakyReads: 1 });
+
+  const seen = [];
+  await flash.read(0, 0x3000, { onProgress: (p) => seen.push(p.done) });
+
+  assert.ok(seen.length > 0, 'progress should be reported');
+  for (let i = 1; i < seen.length; i++) {
+    assert.ok(seen[i] >= seen[i - 1], `progress went ${seen[i - 1]} -> ${seen[i]}`);
+  }
+  assert.equal(seen.at(-1), 0x3000, 'progress should finish at the total');
+});
+
+test('a range larger than one chunk is split, and each chunk is verified', async () => {
+  const { transport, flash } = await flakyFlash({});
+  transport.commandLog.length = 0;
+
+  const data = await flash.read(0, 0x60000, { chunkSize: 0x20000 });
+
+  const reads = transport.commandLog.filter((c) => c === '0xd2').length;
+  assert.equal(reads, 3, 'three chunks for three times the chunk size');
+  assert.equal(data.length, 0x60000);
+  for (let i = 0; i < data.length; i += 4093) {
+    assert.equal(data[i], (i * 7 + 3) & 0xff, `byte ${i}`);
+  }
 });

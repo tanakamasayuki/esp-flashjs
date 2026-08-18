@@ -218,9 +218,7 @@ export class EspLoader {
       throwIfAborted(signal, 'connecting');
       this.log('info', 'protocol.resetting', { strategy });
       await this.reset(strategy);
-      await this.transport.flushInput?.();
-      this.decoder.reset();
-      this.frameQueue.length = 0;
+      await this.resync();
 
       try {
         await this.sync({ signal });
@@ -600,6 +598,30 @@ export class EspLoader {
   /* ------------------------------------------------------------------ */
 
   /**
+   * Discards anything the device is still saying and forgets partial frames.
+   *
+   * Needed after an operation gives up part way through. A failed READ_FLASH
+   * in particular leaves the stub still streaming the rest of the transfer,
+   * and those bytes would otherwise be decoded as the reply to whatever is
+   * sent next — a retry would then fail for a reason that has nothing to do
+   * with the link. Draining twice around a short pause catches data that was
+   * still in flight during the first drain.
+   *
+   * @param {object} [options]
+   * @param {number} [options.settleMs]
+   * @returns {Promise<void>}
+   */
+  async resync({ settleMs = 0 } = {}) {
+    await this.transport.flushInput?.();
+    if (settleMs > 0) {
+      await delay(settleMs);
+      await this.transport.flushInput?.();
+    }
+    this.decoder.reset();
+    this.frameQueue.length = 0;
+  }
+
+  /**
    * @param {number} baudRate
    * @returns {Promise<void>}
    */
@@ -615,9 +637,7 @@ export class EspLoader {
     // The device switches immediately after replying.
     await delay(50);
     await this.transport.setBaudRate(baudRate);
-    await this.transport.flushInput?.();
-    this.decoder.reset();
-    this.frameQueue.length = 0;
+    await this.resync();
     this.log('info', 'protocol.baudRateChanged', { baudRate });
   }
 

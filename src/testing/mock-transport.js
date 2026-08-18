@@ -58,6 +58,8 @@ export class MockTransport {
    * @param {boolean} [options.supportsSecurityInfo] False emulates an ESP32.
    * @param {boolean} [options.secureDownloadMode]
    * @param {boolean} [options.allowStub]  False makes stub loading fail.
+   * @param {number} [options.flakyReads]  READ_FLASH transfers to spoil, so the
+   *   caller's retry path is exercised rather than assumed.
    */
   constructor(options = {}) {
     const {
@@ -67,6 +69,7 @@ export class MockTransport {
       supportsSecurityInfo,
       secureDownloadMode = false,
       allowStub = true,
+      flakyReads = 0,
     } = options;
 
     const def = chipByName(chip);
@@ -82,6 +85,17 @@ export class MockTransport {
     this.secureDownloadMode = secureDownloadMode;
     /** @type {boolean} */
     this.allowStub = allowStub;
+    /**
+     * Number of READ_FLASH transfers that will lose bytes before the link
+     * settles down. A link that drops bytes is the failure this mock could not
+     * previously express, and it is the one that matters: the stub's MD5 turns
+     * it into a rejected transfer rather than silent corruption, so the retry
+     * path is what a caller actually depends on.
+     * @type {number}
+     */
+    this.flakyReads = flakyReads;
+    /** @type {number} Transfers that were made to fail, for assertions. */
+    this.droppedReads = 0;
 
     /** @type {boolean} */
     this.opened = false;
@@ -108,7 +122,7 @@ export class MockTransport {
     this.badChecksums = 0;
     /**
      * In-progress READ_FLASH stream, or null.
-     * @type {{data: Uint8Array, blockSize: number, sent: number}|null}
+     * @type {{data: Uint8Array, blockSize: number, sent: number, dropAt: number}|null}
      */
     this.readSession = null;
 
@@ -365,7 +379,13 @@ export class MockTransport {
           data: this.flash.subarray(address, address + length),
           blockSize,
           sent: 0,
+          // Lose a few bytes from one block, the way a marginal link does.
+          dropAt: this.flakyReads > 0 ? blockSize : -1,
         };
+        if (this.flakyReads > 0) {
+          this.flakyReads--;
+          this.droppedReads++;
+        }
         // One block now; the rest only as acknowledgements come back.
         this.sendReadBlock(0);
         return;
@@ -402,7 +422,14 @@ export class MockTransport {
     }
 
     const end = Math.min(session.sent + session.blockSize, session.data.length);
-    this.send(session.data.subarray(session.sent, end));
+    let block = session.data.subarray(session.sent, end);
+    if (session.dropAt >= 0 && session.sent >= session.dropAt) {
+      // Short by a handful of bytes: exactly what esptool reports as
+      // "expected 0x1000 bytes but received 0xff5".
+      block = block.subarray(0, Math.max(0, block.length - 11));
+      session.dropAt = -1;
+    }
+    this.send(block);
     session.sent = end;
   }
 

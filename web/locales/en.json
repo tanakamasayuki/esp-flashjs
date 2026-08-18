@@ -216,5 +216,12 @@
   "op.wrote": "Wrote {size} at {address}.",
   "op.erased": "Erased {size} at {address}.",
   "op.verified": "Verified: contents match.",
-  "op.backupSaved": "Backup saved as {name}."
+  "op.backupSaved": "Backup saved as {name}.",
+  "device.baudRate": "Speed",
+  "device.baudRate.hint": "Which rates a board accepts is not predictable from the outside: it depends on the USB bridge, the cable and the host, and faster is not always more reliable. Just pick one — the link is tested after connecting and drops back to 115200 if it does not hold.",
+  "op.linkFast": "Link raised to {baudRate} baud and verified.",
+  "op.linkFallback": "{baudRate} baud did not hold on this link, so it stayed at {fallback}. Reads will be slower but correct.",
+  "flash.readRetry": "Read at {address} failed ({message}); retrying, attempt {attempt} of {attempts}.",
+  "device.baudRate.native": "not used (chip's own USB)",
+  "op.linkNative": "This port is the chip's own USB, so the speed setting does not apply."
 }

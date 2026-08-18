@@ -168,6 +168,97 @@ try {
 }
 
 /* -------------------------------------------------------------------------- */
+/* Does the NVS hold what the sketch writes?                                    */
+/* -------------------------------------------------------------------------- */
+
+// Structure is not enough. An ESP32 once passed every check above — valid
+// partition table, correct region sizes, no parse issues — while its NVS held
+// 95 of 150 keys with two thirds of its entries erased, because esptool reset
+// the chip between chunks and the running sketch rewrote NVS underneath the
+// capture. Checking the shape missed it entirely. Checking the contents is the
+// only thing that catches a device that was busy while being read.
+//
+// The expected values come from the sketch itself rather than being repeated
+// here, so the two cannot drift apart.
+try {
+  const sketch = await readFile(
+    new URL('./fixture_device/fixture_device.ino', import.meta.url),
+    'utf8',
+  );
+  const constant = (name) => {
+    const m = sketch.match(new RegExp(`${name}\\s*=\\s*(\\d+)`));
+    return m ? Number(m[1]) : null;
+  };
+  const manyKeys = constant('MANY_KEYS');
+  const bigBlob = constant('BIG_BLOB');
+  const smallBlob = constant('SMALL_BLOB');
+
+  const nvs = await load('nvs.bin');
+  if (nvs && manyKeys && bigBlob && smallBlob) {
+    const { parseNvs } = await import('../../src/format/nvs/parse.js');
+    const store = parseNvs(nvs);
+    const byNs = {};
+    for (const e of store.entries) (byNs[e.namespace] ??= new Map()).set(e.key, e);
+    const sizeOf = (v) => (v instanceof Uint8Array ? v.length : undefined);
+
+    for (const ns of ['types', 'blobs', 'many']) {
+      if (!byNs[ns]) problems.push(`nvs is missing the "${ns}" namespace`);
+    }
+
+    // Every k000..kNNN must be present. A gap means the sketch was interrupted
+    // or the partition filled and garbage collection reclaimed entries.
+    if (byNs.many) {
+      const missing = [];
+      for (let i = 0; i < manyKeys; i++) {
+        const k = `k${String(i).padStart(3, '0')}`;
+        if (!byNs.many.has(k)) missing.push(k);
+      }
+      if (missing.length > 0) {
+        problems.push(
+          `nvs "many" is missing ${missing.length} of ${manyKeys} keys ` +
+            `(${missing[0]}..${missing[missing.length - 1]}) — the device was ` +
+            `rewriting NVS while it was read, or the partition filled up`,
+        );
+      }
+    }
+
+    if (byNs.blobs) {
+      const big = sizeOf(byNs.blobs.get('big')?.value);
+      const small = sizeOf(byNs.blobs.get('small')?.value);
+      if (big !== bigBlob) problems.push(`nvs blobs.big is ${big ?? 'absent'} bytes, expected ${bigBlob}`);
+      if (small !== smallBlob) problems.push(`nvs blobs.small is ${small ?? 'absent'} bytes, expected ${smallBlob}`);
+      // The overwrite must have taken, and the delete must have removed it.
+      if (byNs.blobs.get('rewritten')?.value !== 2) {
+        problems.push(`nvs blobs.rewritten is ${byNs.blobs.get('rewritten')?.value ?? 'absent'}, expected 2`);
+      }
+      if (byNs.blobs.has('deleted')) problems.push('nvs blobs.deleted still exists; it should have been removed');
+    }
+
+    // The whole point of writing then overwriting and deleting is that the
+    // superseded entries stay behind for the parser to reason about. If they
+    // are gone, garbage collection ran and the fixture lost its most
+    // interesting case even though everything else still looks right.
+    const erased = new Set(store.erasedEntries.map((e) => e.key));
+    for (const key of ['rewritten', 'deleted']) {
+      if (!erased.has(key)) {
+        problems.push(
+          `nvs has no erased entry for "${key}" — NVS garbage collection ran, ` +
+            `so the overwrite/delete cases this fixture exists to capture are gone`,
+        );
+      }
+    }
+
+    console.log(
+      `\ncontent checks: many=${byNs.many?.size ?? 0}/${manyKeys} ` +
+        `blobs=${byNs.blobs?.size ?? 0} types=${byNs.types?.size ?? 0} ` +
+        `erased=${store.erasedEntries.length}`,
+    );
+  }
+} catch (error) {
+  problems.push(`could not check NVS contents: ${/** @type {Error} */ (error).message}`);
+}
+
+/* -------------------------------------------------------------------------- */
 
 if (notes.length > 0) {
   console.log('\nnotes:');

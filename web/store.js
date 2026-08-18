@@ -36,8 +36,19 @@
  */
 
 /**
+ * @typedef {object} DeviceState
+ * @property {'disconnected'|'connecting'|'connected'} status
+ * @property {import('./esp-flashjs.js').DeviceInfo|null} info
+ * @property {boolean} usingStub
+ * @property {string|null} error
+ * @property {number} baudRate      What the user selected.
+ * @property {number|null} linkBaudRate  What the link settled on, once connected.
+ * @property {boolean} nativeUsb    The chip's own USB, where the rate is nominal.
+ */
+
+/**
  * @typedef {object} AppState
- * @property {{status: 'disconnected'|'connecting'|'connected', info: import('./esp-flashjs.js').DeviceInfo|null, usingStub: boolean, error: string|null}} device
+ * @property {DeviceState} device
  * @property {{size: number|null}} flash
  * @property {{table: import('./esp-flashjs.js').PartitionTable|null, source: 'device'|'file'|null}} partitions
  * @property {Map<string, 'erased'|'zeroed'|'data'|'unreadable'>} partitionStates
@@ -50,9 +61,64 @@
  */
 
 /** @returns {AppState} */
+/**
+ * The rates on offer: the conventional ladder from 115200 merged with the set
+ * the Arduino IDE offers for boards whose serial port is a microcontroller
+ * running bridge firmware — an M5 ATOM presents a CH552 that way, and such a
+ * bridge implements a fixed table of rates that does not include 921600.
+ * Offering only one of those sets strands the boards that need the other.
+ *
+ * Listed as one sorted run rather than grouped by bridge, because nothing here
+ * can tell which bridge is on the other end: Web Serial exposes a USB id and
+ * nothing more. A label the user cannot match to their board is not guidance.
+ *
+ * There is no ordering by reliability either, and none is implied. Measured on
+ * one CH340 link, 460800 read 256 KB four times out of four while 250000,
+ * 500000, 750000, 921600 and 1500000 all failed every attempt, and 115200
+ * managed two. Which rate works is a property of the whole path — bridge,
+ * cable, host — so the only honest presentation is the list, and the only
+ * honest check is trying it.
+ */
+export const BAUD_RATES = Object.freeze([
+  115200, 230400, 250000, 460800, 500000, 750000, 921600, 1500000,
+]);
+
+const BAUD_STORAGE_KEY = 'esp-flashjs.baudRate';
+
+/** @returns {number} */
+function loadBaudRate() {
+  try {
+    const stored = Number(globalThis.localStorage?.getItem(BAUD_STORAGE_KEY));
+    return BAUD_RATES.includes(stored) ? stored : BAUD_RATES[0];
+  } catch {
+    // Private browsing and some embedded webviews throw on access alone.
+    return BAUD_RATES[0];
+  }
+}
+
+/** @param {number} baudRate */
+export function rememberBaudRate(baudRate) {
+  try {
+    globalThis.localStorage?.setItem(BAUD_STORAGE_KEY, String(baudRate));
+  } catch {
+    // Not being able to remember it is not worth failing over.
+  }
+}
+
+/** @returns {AppState} */
 export function initialState() {
   return {
-    device: { status: 'disconnected', info: null, usingStub: false, error: null },
+    device: {
+      status: 'disconnected',
+      info: null,
+      usingStub: false,
+      error: null,
+      // What the user asked for, and what the link actually settled on. They
+      // differ when a rate was tried and did not hold.
+      baudRate: loadBaudRate(),
+      linkBaudRate: null,
+      nativeUsb: false,
+    },
     flash: { size: null },
     partitions: { table: null, source: null },
     partitionStates: new Map(),

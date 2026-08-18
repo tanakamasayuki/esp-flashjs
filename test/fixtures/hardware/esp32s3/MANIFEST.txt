@@ -1,0 +1,18 @@
+# ESP FlashJS hardware fixture
+chip:      ESP32-S3
+captured:  2026-08-18T05:44:04Z
+esptool:   esptool v5.3.1
+sketch:    tools/fixture-device/fixture_device/fixture_device.ino
+layout:    tools/fixture-device/fixture_device/partitions.csv
+app regions: first 65536 bytes only (the rest is compiled code)
+
+# sha256
+c21eedf33f3707a150922ab643f204385daff70a332b2af457b6b62439f7c8c4  ./app0.bin
+71189f7fb6aed638640078fba3a35fda6c39c8962e74dcc75935aac948da9063  ./app1.bin
+110f4d29a2378310353e1d186300045db6d58b0103a5ec53bfab051f9a7942d0  ./bootarea.bin
+d825ce8e9ff2ecf7b45e237d2ff30318840eaa9163184286b61641945cb9196e  ./ffat.bin
+566f4a451492dcc5b4f23104834c5e00bd83d63d77d7358ee3dda7d87aa2d005  ./littlefs.bin
+b3474d069a01b119508286d0edfb88a6052748a7fb16f6179a10bfeaf46713f7  ./nvs.bin
+f94c5d786a7a8fab06ac5d10e33bf37711a6697636dc037559ea19cc410a17f0  ./otadata.bin
+1897a926cb4ba15ca7d7fe52e49734ea76fc6295370df0042343599ea44988cb  ./partition-table.bin
+c3881d13f479b6a6a4f45a53223fb012b9cb81bd6edf86fa0654b56ae603e26f  ./spiffs.bin

@@ -216,5 +216,12 @@
   "op.wrote": "{address} に {size} を書き込みました。",
   "op.erased": "{address} の {size} を消去しました。",
   "op.verified": "検証成功: 内容が一致しました。",
-  "op.backupSaved": "バックアップを {name} として保存しました。"
+  "op.backupSaved": "バックアップを {name} として保存しました。",
+  "device.baudRate": "速度",
+  "device.baudRate.hint": "どの速度が通るかは外からは分かりません。USBブリッジ・ケーブル・ホストで決まり、速いほど確実とも限りません。選ぶだけで構いません。接続後にリンクを検査し、通らなければ 115200 に戻します。",
+  "op.linkFast": "リンクを {baudRate} baud に上げ、検査に通りました。",
+  "op.linkFallback": "{baudRate} baud はこのリンクでは通らなかったので {fallback} のままにしました。読み出しは遅くなりますが正確です。",
+  "flash.readRetry": "{address} の読み出しに失敗しました（{message}）。再試行 {attempt}/{attempts}。",
+  "device.baudRate.native": "不使用（チップ内蔵USB）",
+  "op.linkNative": "このポートはチップ内蔵の USB なので、速度設定は関係ありません。"
 }

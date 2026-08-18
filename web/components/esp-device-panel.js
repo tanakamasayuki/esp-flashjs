@@ -9,8 +9,8 @@
 
 import { t, onLocaleChange } from '../i18n.js';
 import { WebSerialTransport, formatByteSize, toHexAddress } from '../esp-flashjs.js';
-import { store } from '../store.js';
-import { connect, disconnect } from '../actions.js';
+import { store, BAUD_RATES } from '../store.js';
+import { connect, disconnect, setBaudRate } from '../actions.js';
 
 const TEMPLATE = `
 <style>
@@ -28,6 +28,16 @@ const TEMPLATE = `
   }
   button.secondary { background: var(--bg-button); color: var(--fg); border: 1px solid var(--border); }
   button:disabled { opacity: 0.5; cursor: not-allowed; }
+  label.speed { display: flex; align-items: center; gap: 5px; color: var(--fg-muted); font-size: 12px; }
+  label.speed select {
+    background: var(--bg-button);
+    color: var(--fg);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 4px 6px;
+    font: inherit;
+  }
+  label.speed select:disabled { opacity: 0.5; cursor: not-allowed; }
   /* Vertical space is scarce: flow the facts inline and wrap, rather than
      spending one row per field. */
   .facts {
@@ -103,6 +113,48 @@ export class EspDevicePanel extends HTMLElement {
       button.addEventListener('click', () => void connect());
     }
     controls.append(button);
+
+    /* Link speed ------------------------------------------------------ */
+    // A plain choice rather than an automatic negotiation. Which rate a link
+    // carries is not predictable from the board alone — the cable and the
+    // host's USB path matter too — and it is not monotonic: on one measured
+    // setup 115200 was less reliable than 460800. Whatever is chosen is
+    // verified after connecting, so a wrong guess costs a fallback rather than
+    // corrupt data.
+    const { baudRate, linkBaudRate, nativeUsb } = store.getState().device;
+    const speed = document.createElement('label');
+    speed.className = 'speed';
+    speed.title = t('device.baudRate.hint');
+    speed.append(document.createTextNode(t('device.baudRate')));
+
+    const select = document.createElement('select');
+    // Changing it mid-session would mean tearing the link down and rebuilding
+    // it; connecting again is clearer than a control that silently reconnects.
+    select.disabled = status !== 'disconnected';
+    for (const rate of BAUD_RATES) {
+      const option = document.createElement('option');
+      option.value = String(rate);
+      option.textContent = String(rate);
+      option.selected = rate === baudRate;
+      select.append(option);
+    }
+    select.addEventListener('change', () => setBaudRate(Number(select.value)));
+    speed.append(select);
+
+    // Never leave the control showing a number that is not what is happening.
+    // On the chip's own USB the rate is nominal and was never applied; on a
+    // real UART it may have been rejected and fallen back.
+    if (status === 'connected') {
+      const actual = document.createElement('span');
+      if (nativeUsb) {
+        actual.textContent = t('device.baudRate.native');
+        select.disabled = true;
+      } else if (linkBaudRate !== null && linkBaudRate !== baudRate) {
+        actual.textContent = `→ ${linkBaudRate}`;
+      }
+      if (actual.textContent) speed.append(actual);
+    }
+    controls.append(speed);
 
     const statusText = document.createElement('span');
     statusText.className = 'status';

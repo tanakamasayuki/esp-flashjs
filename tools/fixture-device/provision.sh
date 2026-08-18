@@ -19,7 +19,11 @@ REPO="$(cd "$HERE/../.." && pwd)"
 SKETCH="$HERE/fixture_device"
 CSV="$SKETCH/partitions.csv"
 
-BAUD="${BAUD:-921600}"
+# Deliberately slow. Reading flash is the one operation where a corrupted
+# byte becomes a committed fixture, and 921600 is unreliable on ESP32 boards
+# with a CP2102-class bridge. A 4 MB dump takes minutes at this rate; that is
+# a fine trade for not having to wonder whether the bytes are real.
+BAUD="${BAUD:-115200}"
 MONITOR_BAUD="${MONITOR_BAUD:-115200}"
 WAIT_SECONDS="${WAIT_SECONDS:-90}"
 CORE="${CORE:-esp32:esp32}"
