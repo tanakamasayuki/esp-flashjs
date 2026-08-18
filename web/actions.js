@@ -103,6 +103,7 @@ export async function disconnect() {
     device: { status: 'disconnected', info: null, usingStub: false, error: null },
     flash: { size: null },
     partitions: { table: null, source: null },
+    partitionStates: new Map(),
     selection: { kind: null, id: null },
   });
   store.log('info', 'op.disconnected');
@@ -142,6 +143,7 @@ export async function readPartitionTable() {
     const table = parsePartitionTable(data);
     store.setState({ partitions: { table, source: 'device' } });
     for (const issue of table.issues) logIssue(issue);
+    await probePartitions(table.partitions);
   } catch (error) {
     store.log('error', 'error.INVALID_MAGIC', {
       message: /** @type {Error} */ (error).message,
@@ -153,6 +155,34 @@ export async function readPartitionTable() {
       offset: toHexAddress(PARTITION_TABLE_OFFSET),
       bytes: bytesToHex(data.subarray(0, 16), ' '),
     });
+  }
+}
+
+/**
+ * Reads the head of every partition so the map can say which are still empty.
+ *
+ * @param {import('./esp-flashjs.js').Partition[]} partitions
+ */
+export async function probePartitions(partitions) {
+  if (!flash) return;
+  const controller = new AbortController();
+  try {
+    const states = await withBusy(controller, () =>
+      /** @type {EspFlash} */ (flash).probePartitions(partitions, {
+        signal: controller.signal,
+        onProgress: reportProgress,
+      }),
+    );
+    store.setState({ partitionStates: states });
+
+    const empty = [...states.entries()].filter(([, v]) => v === 'erased' || v === 'zeroed');
+    if (empty.length > 0) {
+      store.log('info', 'partition.someUninitialized', {
+        labels: empty.map(([label]) => label).join(', '),
+      });
+    }
+  } catch (error) {
+    logError(error);
   }
 }
 
@@ -400,6 +430,22 @@ export function exportLog() {
 let bufferCounter = 0;
 
 /**
+ * Identity of a buffer for replacement purposes.
+ *
+ * Two reads of the same device region are the same buffer, so the second
+ * replaces the first instead of piling up another entry in the file list.
+ * File imports are keyed by name, and anything without an address falls back
+ * to a unique key so unrelated buffers never collide.
+ *
+ * @param {{source: 'device'|'file', name: string, address: number|null, size: number}} spec
+ * @returns {string}
+ */
+function bufferKey({ source, name, address, size }) {
+  if (source === 'device' && address !== null) return `device:${address}:${size}`;
+  return `${source}:${name}`;
+}
+
+/**
  * @param {object} spec
  * @param {string} spec.name
  * @param {Uint8Array} spec.data
@@ -410,7 +456,23 @@ let bufferCounter = 0;
  * @returns {string} The buffer id.
  */
 export function addBuffer({ name, data, source, address, partitionLabel, analysisContext }) {
-  const id = `buf-${++bufferCounter}`;
+  const key = bufferKey({ source, name, address, size: data.length });
+  const buffers = new Map(store.getState().buffers);
+  const previous = [...buffers.values()].find((b) => b.key === key);
+
+  if (previous) {
+    // Re-reading is allowed on purpose — a flaky link or failing flash can hand
+    // back different bytes, and being able to check that is the point. Last
+    // read wins, and whether it changed is worth saying out loud.
+    const changed =
+      previous.data.length !== data.length || !equalBytes(previous.data, data);
+    store.log(changed ? 'warn' : 'info', changed ? 'op.rereadDiffers' : 'op.rereadSame', {
+      name,
+      address: address === null ? '' : toHexAddress(address),
+    });
+    buffers.delete(previous.id);
+  }
+
   let analysis = null;
   try {
     analysis = analyzeBinary(data, analysisContext ?? { offset: address ?? 0 });
@@ -422,10 +484,24 @@ export function addBuffer({ name, data, source, address, partitionLabel, analysi
     });
   }
 
-  const buffers = new Map(store.getState().buffers);
-  buffers.set(id, { id, name, data, source, address, partitionLabel, analysis });
+  // Keep the previous id when replacing, so a selection pointing at it survives.
+  const id = previous?.id ?? `buf-${++bufferCounter}`;
+  buffers.set(id, { id, key, name, data, source, address, partitionLabel, analysis });
   store.setState({ buffers });
   return id;
+}
+
+/**
+ * @param {Uint8Array} a
+ * @param {Uint8Array} b
+ * @returns {boolean}
+ */
+function equalBytes(a, b) {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
 }
 
 /** @param {string} id */

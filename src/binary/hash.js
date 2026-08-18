@@ -38,6 +38,36 @@ export function crc32(data, seed = 0xffffffff) {
   return (crc ^ 0xffffffff) >>> 0;
 }
 
+/**
+ * CRC-32 in the convention ESP-IDF's `esp_rom_crc32_le` uses.
+ *
+ * That function inverts its first argument before starting and inverts the
+ * result on the way out, so the argument is the *bitwise inverse of the
+ * initial value*, not the initial value:
+ *
+ * ```c
+ * crc = ~crc;
+ * for (...) crc = table[(crc ^ buf[i]) & 0xff] ^ (crc >> 8);
+ * return ~crc;
+ * ```
+ *
+ * `espCrc32Le(0, data)` therefore equals the standard CRC-32 above, while
+ * `espCrc32Le(0xFFFFFFFF, data)` — what IDF passes for otadata and NVS — starts
+ * the loop at zero and produces a different value. Using {@link crc32} for
+ * those structures rejects perfectly valid data.
+ *
+ * @param {number} seed Bitwise inverse of the initial value; IDF passes 0xFFFFFFFF.
+ * @param {Uint8Array} data
+ * @returns {number} Unsigned 32-bit CRC.
+ */
+export function espCrc32Le(seed, data) {
+  let crc = ~seed >>> 0;
+  for (let i = 0; i < data.length; i++) {
+    crc = CRC32_TABLE[(crc ^ data[i]) & 0xff] ^ (crc >>> 8);
+  }
+  return ~crc >>> 0;
+}
+
 /* -------------------------------------------------------------------------- */
 /* XOR checksum (ESP image segments)                                           */
 /* -------------------------------------------------------------------------- */

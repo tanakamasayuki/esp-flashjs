@@ -18,6 +18,7 @@
 /**
  * @typedef {object} Buffer
  * @property {string} id
+ * @property {string} key   Identity used to replace a re-read of the same region.
  * @property {string} name
  * @property {Uint8Array} data
  * @property {'device'|'file'} source
@@ -39,6 +40,7 @@
  * @property {{status: 'disconnected'|'connecting'|'connected', info: import('./esp-flashjs.js').DeviceInfo|null, usingStub: boolean, error: string|null}} device
  * @property {{size: number|null}} flash
  * @property {{table: import('./esp-flashjs.js').PartitionTable|null, source: 'device'|'file'|null}} partitions
+ * @property {Map<string, 'erased'|'zeroed'|'data'|'unreadable'>} partitionStates
  * @property {{kind: 'partition'|'buffer'|'gap'|null, id: string|null}} selection
  * @property {Map<string, Buffer>} buffers
  * @property {{tab: 'info'|'hex'|'analyze'|'edit'|'diff'}} inspector
@@ -53,6 +55,7 @@ export function initialState() {
     device: { status: 'disconnected', info: null, usingStub: false, error: null },
     flash: { size: null },
     partitions: { table: null, source: null },
+    partitionStates: new Map(),
     selection: { kind: null, id: null },
     buffers: new Map(),
     inspector: { tab: 'info' },

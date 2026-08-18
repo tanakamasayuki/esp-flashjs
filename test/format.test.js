@@ -15,6 +15,7 @@ import {
 } from '../src/format/partition.js';
 import { parseEspImage, verifyImageHash } from '../src/format/image.js';
 import { parseOtaData } from '../src/format/otadata.js';
+import { crc32, espCrc32Le } from '../src/binary/hash.js';
 import { analyzeBinary, detectFormat, analyzeBinaryAs } from '../src/format/registry.js';
 import { InvalidMagicError } from '../src/util/errors.js';
 import {
@@ -400,4 +401,31 @@ test('every partition still appears in the layout', () => {
   const layout = describeFlashLayout(partitions, { flashSize: 4 * 1024 * 1024 });
   const named = layout.filter((r) => r.kind === 'partition').map((r) => r.partition?.label);
   assert.deepEqual(named, partitions.map((p) => p.label));
+});
+
+test('otadata uses the ROM CRC convention, not the standard one', () => {
+  // IDF calls esp_crc32_le(UINT32_MAX, &ota_seq, 4). That function inverts its
+  // seed before the loop, so it is NOT the standard CRC-32 and the two give
+  // different answers. Using the wrong one rejects valid otadata.
+  const seq = new Uint8Array([1, 0, 0, 0]);
+  assert.notEqual(espCrc32Le(0xffffffff, seq), crc32(seq));
+  // With a zero argument the ROM function is the standard CRC-32.
+  assert.equal(espCrc32Le(0, seq), crc32(seq));
+
+  const ota = parseOtaData(otaDataBytes([1, null]));
+  assert.equal(ota.sectors[0].valid, true, 'a genuine IDF sector must validate');
+  assert.equal(ota.activeSector, 0);
+});
+
+test('otadata tells "never written" apart from "corrupt"', () => {
+  const erased = parseOtaData(new Uint8Array(0x2000).fill(0xff));
+  assert.ok(erased.issues.some((i) => i.code === 'otadata.neverWritten'));
+  assert.equal(erased.activeSector, null);
+
+  // A sequence number written without its CRC is damage, not a fresh device.
+  const partial = new Uint8Array(0x2000).fill(0xff);
+  new DataView(partial.buffer).setUint32(0, 7, true);
+  const broken = parseOtaData(partial);
+  assert.ok(broken.issues.some((i) => i.code === 'otadata.noValidSector'));
+  assert.ok(!broken.issues.some((i) => i.code === 'otadata.neverWritten'));
 });

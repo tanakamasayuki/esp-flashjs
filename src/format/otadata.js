@@ -10,7 +10,7 @@
  */
 
 import { ByteReader } from '../binary/reader.js';
-import { crc32 } from '../binary/hash.js';
+import { espCrc32Le } from '../binary/hash.js';
 
 export const OTADATA_SECTOR_SIZE = 0x1000;
 export const OTA_SEQ_EMPTY = 0xffffffff;
@@ -26,7 +26,8 @@ export const OTA_SEQ_EMPTY = 0xffffffff;
  * @property {number} crc
  * @property {number} computedCrc
  * @property {boolean} valid
- * @property {boolean} empty
+ * @property {boolean} empty   Sequence number is 0xFFFFFFFF.
+ * @property {boolean} erased  The whole 4 KB sector is still 0xFF.
  */
 
 /**
@@ -59,7 +60,14 @@ export function parseOtaData(data, { otaSlotCount = 2 } = {}) {
     const seq = reader.u32();
     // The CRC covers only the 4-byte sequence number.
     const crc = new DataView(data.buffer, data.byteOffset + base + 28, 4).getUint32(0, true);
-    const computedCrc = crc32(data.subarray(base, base + 4), 0xffffffff);
+    // IDF: esp_crc32_le(UINT32_MAX, &s->ota_seq, 4) — over the sequence number
+    // alone, in the ROM's inverted-seed convention.
+    const computedCrc = espCrc32Le(0xffffffff, data.subarray(base, base + 4));
+    // "Never written" is the whole sector still erased, not merely a 0xFFFFFFFF
+    // sequence number — a partially written sector has neither a usable
+    // sequence nor a valid CRC, and calling that "unused" would be wrong.
+    const sectorBytes = data.subarray(base, Math.min(base + OTADATA_SECTOR_SIZE, data.length));
+    const erased = sectorBytes.every((b) => b === 0xff);
     const empty = seq === OTA_SEQ_EMPTY;
 
     sectors.push({
@@ -69,6 +77,7 @@ export function parseOtaData(data, { otaSlotCount = 2 } = {}) {
       computedCrc,
       valid: !empty && crc === computedCrc,
       empty,
+      erased,
     });
   }
 
@@ -81,7 +90,7 @@ export function parseOtaData(data, { otaSlotCount = 2 } = {}) {
     activeSector = winner.index;
     // IDF stores seq as "boot count"; slot = (seq - 1) % slots.
     bootSlot = otaSlotCount > 0 ? (winner.seq - 1) % otaSlotCount : null;
-  } else if (sectors.every((s) => s.empty)) {
+  } else if (sectors.every((s) => s.erased)) {
     issues.push({ level: 'warning', code: 'otadata.neverWritten' });
   } else {
     issues.push({ level: 'error', code: 'otadata.noValidSector' });

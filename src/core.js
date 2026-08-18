@@ -77,7 +77,7 @@ export {
 /* Binary utilities -------------------------------------------------------- */
 export { ByteReader } from './binary/reader.js';
 export { ByteWriter } from './binary/writer.js';
-export { crc32, md5, md5Hex, sha256, espChecksum, ESP_CHECKSUM_MAGIC } from './binary/hash.js';
+export { crc32, espCrc32Le, md5, md5Hex, sha256, espChecksum, ESP_CHECKSUM_MAGIC } from './binary/hash.js';
 export { searchBytes, searchText, parseHexPattern, extractStrings } from './binary/search.js';
 export { diffBinary, diffBinaryStream, diffSummary, isUniform, entropy } from './binary/diff.js';
 

@@ -171,16 +171,23 @@ export function otaDataBytes(sequences = [1, null]) {
 }
 
 /**
+ * The CRC IDF writes into otadata: `esp_crc32_le(UINT32_MAX, &ota_seq, 4)`.
+ *
+ * Written out longhand rather than calling our own espCrc32Le, so the fixture
+ * cannot agree with a mistake in the implementation it is meant to check.
+ *
  * @param {Uint8Array} data
  * @returns {number}
  */
 function crcOf(data) {
-  let crc = 0xffffffff;
+  // esp_rom_crc32_le inverts the seed before the loop; IDF passes 0xFFFFFFFF,
+  // so the loop starts at zero.
+  let crc = ~0xffffffff >>> 0;
   for (let i = 0; i < data.length; i++) {
     crc ^= data[i];
     for (let k = 0; k < 8; k++) crc = crc & 1 ? 0xedb88320 ^ (crc >>> 1) : crc >>> 1;
   }
-  return (crc ^ 0xffffffff) >>> 0;
+  return ~crc >>> 0;
 }
 
 /**

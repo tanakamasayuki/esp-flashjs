@@ -7,6 +7,7 @@
 
 import { CMD, flashBeginPayload, flashDataPayload, flashEndPayload, eraseRegionPayload, readFlashPayload, spiFlashMd5Payload } from '../protocol/commands.js';
 import { md5Hex } from '../binary/hash.js';
+import { isUniform } from '../binary/diff.js';
 import { slipEncode } from '../protocol/slip.js';
 import { bytesToHex } from '../util/hex.js';
 import { createProgressReporter } from '../util/events.js';
@@ -129,6 +130,39 @@ export class EspFlash {
 
     progress.finish();
     return out;
+  }
+
+  /**
+   * Reads the head of each partition to classify what is in it.
+   *
+   * Answers "is this partition actually used?" up front, which otherwise takes
+   * a read per partition and a look at a hex dump. Only the first sector is
+   * fetched, so the cost stays at a few KB per partition.
+   *
+   * @param {import('../format/partition.js').Partition[]} partitions
+   * @param {OperationOptions & {probeBytes?: number}} [options]
+   * @returns {Promise<Map<string, 'erased'|'zeroed'|'data'|'unreadable'>>} Keyed by label.
+   */
+  async probePartitions(partitions, { probeBytes = FLASH_SECTOR_SIZE, onProgress, signal } = {}) {
+    /** @type {Map<string, 'erased'|'zeroed'|'data'|'unreadable'>} */
+    const states = new Map();
+    if (!this.loader.isStub) return states;
+
+    const progress = createProgressReporter(onProgress, 'reading', partitions.length);
+    for (const [index, p] of partitions.entries()) {
+      throwIfAborted(signal, 'reading');
+      try {
+        const head = await this.read(p.offset, Math.min(probeBytes, p.size), { signal });
+        states.set(p.label, classifyRegion(head));
+      } catch (error) {
+        if (/** @type {Error & {code?: string}} */ (error).code === 'ABORTED') throw error;
+        // One unreadable partition must not abandon the rest of the sweep.
+        states.set(p.label, 'unreadable');
+      }
+      progress.report(index + 1);
+    }
+    progress.finish();
+    return states;
   }
 
   /**
@@ -298,6 +332,22 @@ export class EspFlash {
       throw new OutOfRangeError(address, size, this.flashSize);
     }
   }
+}
+
+/**
+ * Classifies a region by its contents.
+ *
+ * Erased flash is all 0xFF; a region that has been written and then zeroed is
+ * all 0x00. Either way there is nothing to parse, and saying so beats letting
+ * someone hunt through a hex dump of padding.
+ *
+ * @param {Uint8Array} data
+ * @returns {'erased'|'zeroed'|'data'}
+ */
+function classifyRegion(data) {
+  if (isUniform(data, 0xff)) return 'erased';
+  if (isUniform(data, 0x00)) return 'zeroed';
+  return 'data';
 }
 
 /**

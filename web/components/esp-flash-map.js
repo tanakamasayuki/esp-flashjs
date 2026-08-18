@@ -67,6 +67,16 @@ const TEMPLATE = `
     white-space: nowrap;
   }
   .locked { font-size: 11px; }
+  .tag {
+    font-size: 10px;
+    padding: 1px 5px;
+    border-radius: 3px;
+    border: 1px solid var(--border);
+    color: var(--fg-muted);
+    vertical-align: 1px;
+  }
+  /* Nothing written yet: mute it so the used partitions stand out. */
+  li.empty-partition .name { color: var(--fg-muted); font-weight: 400; }
 </style>
 <div id="root"></div>
 `;
@@ -85,6 +95,7 @@ export class EspFlashMap extends HTMLElement {
       store.subscribe((s) => s.partitions.table, rerender),
       store.subscribe((s) => s.flash.size, rerender),
       store.subscribe((s) => s.selection.id, rerender),
+      store.subscribe((s) => s.partitionStates, rerender),
       onLocaleChange(rerender),
     );
     this._render();
@@ -145,9 +156,19 @@ export class EspFlashMap extends HTMLElement {
         'aria-selected',
         String(state.selection.kind === 'partition' && state.selection.id === partition.label),
       );
+      const probed = state.partitionStates.get(partition.label);
+      // An empty partition looks identical to a full one on a size-based map,
+      // so say it outright rather than making someone read a hex dump.
+      const stateTag =
+        probed && probed !== 'data'
+          ? ` <span class="tag">${escapeHtml(t(`partition.state.${probed}`))}</span>`
+          : '';
+      if (probed && probed !== 'data') li.classList.add('empty-partition');
+
       li.innerHTML =
         `<span><span class="name">${escapeHtml(partition.label)}</span>` +
         (partition.encrypted ? ` <span class="locked" title="${escapeHtml(t('partition.encrypted'))}">&#128274;</span>` : '') +
+        stateTag +
         `<br><span class="sub">${partition.typeName} / ${partition.subtypeName} &middot; ` +
         `${toHexAddress(partition.offset)}</span></span>` +
         `<span class="size">${formatByteSize(partition.size)}</span>`;
