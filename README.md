@@ -242,6 +242,8 @@ is the index.
 | --- | --- |
 | [spec.md](./docs/spec.md) | Specification: design decisions, protocol, formats, safety |
 | [development.md](./docs/development.md) | Setup, testing, hardware checklist |
+| [analyzers.md](./docs/analyzers.md) | Writing a binary analyzer plugin |
+| [transports.md](./docs/transports.md) | Writing a transport (Node.js, WebUSB, …) |
 | [ci.md](./docs/ci.md) | The three GitHub Actions workflows and their setup |
 | [release.md](./docs/release.md) | Versioning and the release procedure |
 | [publishing.md](./docs/publishing.md) | How npm, CDN and Pages are wired up |

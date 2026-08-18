@@ -6,6 +6,8 @@
 | --- | --- | --- |
 | [spec.ja.md](./spec.ja.md) | 仕様書。設計判断、プロトコル、各フォーマットの構造、安全機構 | 実装者 |
 | [development.ja.md](./development.ja.md) | 開発ガイド。セットアップ、テストの書き方と走らせ方、実機での手動テスト | コントリビュータ |
+| [analyzers.ja.md](./analyzers.ja.md) | Analyzer プラグインの書き方 |
+| [transports.ja.md](./transports.ja.md) | Transport の書き方（Node.js・WebUSB など） |
 | [ci.ja.md](./ci.ja.md) | GitHub Actions の説明。3 本のワークフロー、必要な設定、失敗時の読み方 | コントリビュータ、メンテナ |
 | [release.ja.md](./release.ja.md) | リリース手順。バージョニング、npm 公開、間違えたときの対処 | メンテナ |
 | [publishing.ja.md](./publishing.ja.md) | 配布方法の決定。npm / CDN / Pages の構成と、その理由 | メンテナ |

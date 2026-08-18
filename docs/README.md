@@ -6,6 +6,8 @@
 | --- | --- | --- |
 | [spec.md](./spec.md) | Specification: design decisions, protocol, format layouts, safety | Implementers |
 | [development.md](./development.md) | Setup, how to write and run tests, manual hardware checklist | Contributors |
+| [analyzers.md](./analyzers.md) | Writing a binary analyzer plugin |
+| [transports.md](./transports.md) | Writing a transport (Node.js, WebUSB, …) |
 | [ci.md](./ci.md) | The three GitHub Actions workflows, required setup, reading failures | Contributors, maintainers |
 | [release.md](./release.md) | Versioning, the release procedure, recovering from mistakes | Maintainers |
 | [publishing.md](./publishing.md) | How npm, CDN and Pages are wired up, and why | Maintainers |

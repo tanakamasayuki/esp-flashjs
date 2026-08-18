@@ -1736,8 +1736,8 @@ See [publishing.md](./publishing.md) for the full account. In brief:
 ### Phase 4 — Extensions
 
 - [ ] SPIFFS / LittleFS / FAT rebuilding
-- [ ] Publishing and documenting the analyzer plugin API
-- [ ] NodeSerialTransport / WebUSBTransport
+- [x] Publishing and documenting the analyzer plugin API ([analyzers.md](./analyzers.md); its example is executed by `test/analyzer-plugin.test.js`, so it cannot drift)
+- [x] NodeSerialTransport / WebUSBTransport — decided against shipping either; the `Transport` interface is the extension point and [transports.md](./transports.md) documents it with a working Node example. A Node transport would mean a native dependency, which costs every consumer the zero-dependency guarantee
 - [ ] Reconsidering ESP8266 support
 - [ ] Deciding on package splitting (`@esp-flashjs/*`)
 

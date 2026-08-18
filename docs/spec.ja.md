@@ -1500,8 +1500,8 @@ GitHub Actions で以下を実行する。ローカルでは `npm run check` が
 ### Phase 4 — 拡張
 
 - [ ] SPIFFS / LittleFS / FAT の再構築
-- [ ] Analyzer Plugin API の公開・ドキュメント化
-- [ ] NodeSerialTransport / WebUSBTransport
+- [x] Analyzer Plugin API の公開・ドキュメント化（[analyzers.ja.md](./analyzers.ja.md)。例は `test/analyzer-plugin.test.js` で実行しているので古くならない）
+- [x] NodeSerialTransport / WebUSBTransport — どちらも同梱しない判断。拡張点は `Transport` インターフェースであり、[transports.ja.md](./transports.ja.md) に動作する Node 実装例つきで文書化した。Node 版の同梱は native 依存を意味し、依存ゼロの保証を全利用者から奪う
 - [ ] ESP8266 サポートの再検討
 - [ ] パッケージ分割の判断（`@esp-flashjs/*`）
 

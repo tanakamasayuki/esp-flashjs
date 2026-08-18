@@ -197,6 +197,8 @@ npm への公開は手元のマシンから、コピペ 3 行で行います。[
 | --- | --- |
 | [spec.ja.md](./docs/spec.ja.md) | 仕様書。設計判断、プロトコル、各フォーマット、安全機構 |
 | [development.ja.md](./docs/development.ja.md) | 開発ガイド。セットアップ、テスト、実機チェックリスト |
+| [analyzers.ja.md](./docs/analyzers.ja.md) | Analyzer プラグインの書き方 |
+| [transports.ja.md](./docs/transports.ja.md) | Transport の書き方（Node.js・WebUSB など） |
 | [ci.ja.md](./docs/ci.ja.md) | GitHub Actions 3 本の説明と必要な設定 |
 | [release.ja.md](./docs/release.ja.md) | バージョニングとリリース手順 |
 | [publishing.ja.md](./docs/publishing.ja.md) | npm / CDN / Pages の構成とその理由 |
