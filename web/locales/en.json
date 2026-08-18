@@ -264,5 +264,9 @@
   "diff.kind.modified": "changed",
   "diff.kind.added": "added",
   "diff.kind.removed": "removed",
-  "diff.truncated": "Showing the first {shown} of {total} differing runs."
+  "diff.truncated": "Showing the first {shown} of {total} differing runs.",
+  "analyze.encrypted": "Encrypted (entropy {entropy}). Flash encryption is on, so these bytes cannot be read as their format.",
+  "analyze.highEntropy": "No structure visible (entropy {entropy}). Flash encryption is off, so this is most likely compressed or already-random data rather than ciphertext.",
+  "nvs.notFlashEncrypted": "Flash encryption does not cover NVS. This partition is stored in the clear unless NVS encryption was enabled separately, with its own key in an nvs_keys partition.",
+  "nvs.likelyEncrypted": "No readable pages, and the bytes have no structure. This is more likely NVS encryption than an empty partition."
 }

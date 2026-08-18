@@ -264,5 +264,9 @@
   "diff.kind.modified": "変更",
   "diff.kind.added": "追加",
   "diff.kind.removed": "削除",
-  "diff.truncated": "相違箇所 {total} 件のうち先頭 {shown} 件を表示しています。"
+  "diff.truncated": "相違箇所 {total} 件のうち先頭 {shown} 件を表示しています。",
+  "analyze.encrypted": "暗号化されています（エントロピー {entropy}）。フラッシュ暗号化が有効なため、本来の形式としては読めません。",
+  "analyze.highEntropy": "構造が見えません（エントロピー {entropy}）。フラッシュ暗号化は無効なので、暗号文ではなく圧縮済みか元々ランダムなデータの可能性が高いです。",
+  "nvs.notFlashEncrypted": "フラッシュ暗号化は NVS を対象にしません。NVS 暗号化（nvs_keys パーティションの鍵を使う別機能）を個別に有効にしていない限り、この領域は平文です。",
+  "nvs.likelyEncrypted": "読めるページが1つもなく、バイト列に構造がありません。空のパーティションではなく NVS 暗号化の可能性が高いです。"
 }

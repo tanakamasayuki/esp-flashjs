@@ -931,10 +931,64 @@ analyzeBinaryAs(id, data, ctx)  // -> AnalysisResult, format specified explicitl
 
 ### 9.4 Detecting encryption
 
-A Flash-Encrypted region has high entropy. When entropy exceeds 7.5 bits/byte
-and no known magic is found, return `type = 'encrypted?'` with
-`metadata.entropy`. **It must never look as though the contents were
-understood.**
+High entropy is the only thing a buffer can say about itself here, and it says
+less than it appears to. Encrypted bytes and compressed bytes are both
+indistinguishable from noise — that is what both are for — and so is a
+perfectly ordinary file that happens to contain a byte counter. A LittleFS
+image captured from an unencrypted ESP32-S3 in this repository scores a full
+8.0 bits/byte for exactly that reason.
+
+So entropy alone never claims encryption. Two better signals are usually to
+hand:
+
+- **The device.** `DeviceInfo.flashEncryptionEnabled` comes from an eFuse. A
+  chip that says encryption is off is not to be contradicted; opaque bytes
+  there are compressed, hashed or already random.
+- **The partition table.** Its `encrypted` flag is a *policy* bit — "encrypt
+  this partition when flash encryption is enabled" — not a statement that these
+  bytes are ciphertext. It means nothing on a chip with encryption off, so it
+  is only consulted once that has been ruled out.
+
+`classifyEntropy(entropy, ctx)` combines them into one of four answers:
+
+| Result | When | Reported as |
+| --- | --- | --- |
+| `encrypted` | Entropy is high and the chip, or the table, says encryption is on | `type = 'encrypted?'` |
+| `possibly-encrypted` | Entropy is high and nothing is known about the device | `type = 'encrypted?'` |
+| `high-entropy` | Entropy is high and the chip says encryption is **off** | `type = 'raw'`, stated as a fact rather than an accusation |
+| `unknown` | Entropy is normal | `type = 'raw'` |
+
+Entropy is measured as the maximum over every 16 KB window, skipping uniform
+ones. Sampling a few windows was the first attempt and missed a 64 KB opaque
+region sitting between two of them; which part of a partition has been written
+is an accident, so all of it is scanned.
+
+**The contents must never look as though they were understood.**
+
+Note that flash encryption does not cover NVS. The analyzer says so when it
+sees an NVS partition on an encrypted device, because the chip reporting
+"encryption on" invites the opposite conclusion.
+
+### 9.5 Decryption — deliberately not implemented
+
+Accepting a key and decrypting a region in the browser is feasible. WebCrypto
+has no XTS mode, but encrypting a single block with AES-CBC and a zero IV is
+AES-ECB for that block, which is enough to build XTS-AES on top of — so it
+would cost no runtime dependency.
+
+It is not implemented because of who it would help. Under ESP-IDF's default
+flow the key is generated on the chip, burned into eFuse and read-protected: it
+never leaves the device, and nobody — including this tool — can decrypt that
+flash. Decryption only helps someone who generated the key themselves and still
+holds the file, and that person already has `espsecure.py`.
+
+Enabling flash encryption is also a one-way door in hardware, so a board
+prepared for testing this cannot be used for anything else afterwards.
+
+If it is ever built, what is needed is not an encrypted board but **a key
+file**: a device in Development mode whose key was generated externally, plus
+the `.bin` that was burned into it. Without that pairing there is nothing to
+verify against.
 
 ---
 
@@ -1731,7 +1785,8 @@ See [publishing.md](./publishing.md) for the full account. In brief:
 - [x] FAT parsing, including ESP-IDF's wear-levelling layer
 - [x] Filesystem tree with per-file extraction in the UI
 - [x] A dedicated diff view in the UI
-- [ ] Refining encryption detection
+- [x] Refining encryption detection — entropy no longer claims encryption on its own; the chip's eFuse and the partition table decide ([9.4](#94-detecting-encryption))
+- [ ] ~~Decrypting with a supplied key~~ — feasible, deliberately deferred; the reasoning is in [9.5](#95-decryption--deliberately-not-implemented)
 
 ### Phase 4 — Extensions
 

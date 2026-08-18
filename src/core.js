@@ -178,6 +178,9 @@ export {
   fatAnalyzer,
   rawAnalyzer,
   CONFIDENCE_THRESHOLD,
+  HIGH_ENTROPY_THRESHOLD,
+  peakEntropy,
+  classifyEntropy,
 } from './format/registry.js';
 
 /* Chip metadata ----------------------------------------------------------- */

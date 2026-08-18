@@ -28,6 +28,8 @@ import { entropy, isUniform } from '../binary/diff.js';
  * @property {number} [offset]      Absolute flash offset the buffer came from.
  * @property {import('./partition.js').Partition} [partition] Owning partition, if known.
  * @property {number|null} [flashSize]
+ * @property {boolean} [flashEncryptionEnabled] What the device reports about
+ *   itself. Entropy alone cannot tell encryption from compression; this can.
  */
 
 /**
@@ -433,6 +435,25 @@ export const nvsAnalyzer = {
   },
   analyze(data, ctx) {
     const store = parseNvs(data);
+    const issues = [...store.issues];
+
+    // Flash encryption does not cover NVS, and this catches people out: the
+    // chip reports encryption on, so the partition is assumed protected. It is
+    // not. NVS has its own scheme, keyed from a separate `nvs_keys` partition,
+    // and it has to be turned on separately.
+    if (ctx.flashEncryptionEnabled === true) {
+      issues.push({ level: 'warning', code: 'nvs.notFlashEncrypted', params: {} });
+    }
+
+    // An NVS partition with no readable pages and no structure is not an empty
+    // one. NVS encryption turns the whole partition into ciphertext, and the
+    // difference between "nothing stored here" and "cannot read what is stored
+    // here" is the difference between a working device and a broken one.
+    const usable = store.pages.filter((page) => page.stateName !== 'uninitialized').length;
+    if (usable === 0 && store.entries.length === 0 && peakEntropy(data) > HIGH_ENTROPY_THRESHOLD) {
+      issues.push({ level: 'warning', code: 'nvs.likelyEncrypted', params: {} });
+    }
+
     return {
       type: 'nvs',
       confidence: ctx.partition?.subtypeName === 'nvs' ? 0.9 : 0.4,
@@ -450,7 +471,7 @@ export const nvsAnalyzer = {
           label: `Page ${page.index} (${page.stateName}, seq ${page.seqNo}, ${page.usedEntries} entries)`,
           kind: /** @type {const} */ ('entry'),
         })),
-      issues: store.issues,
+      issues,
       model: store,
     };
   },
@@ -538,6 +559,80 @@ export const spiffsAnalyzer = {
   },
 };
 
+/** Above this, a region's bytes carry no visible structure. */
+export const HIGH_ENTROPY_THRESHOLD = 7.5;
+
+/** Window size for the entropy scan. Small enough to notice one opaque file. */
+const ENTROPY_WINDOW_SIZE = 16384;
+
+/**
+ * The highest entropy found in any window of the buffer.
+ *
+ * Every window is examined rather than a sample of them. Sampling was the
+ * first attempt and it is wrong twice over: which part the head lands in is an
+ * accident of how much has been written, and spreading a handful of windows
+ * across a partition leaves gaps a whole file can hide in — a 64 KB opaque
+ * region in a 512 KB partition fell between two of eight windows and read as
+ * empty. Scanning is one pass over bytes that were just read off a device at
+ * 10 KB/s; the cost is not worth an incomplete answer.
+ *
+ * Uniform windows are skipped, not counted as zero: erased flash between two
+ * written regions says nothing about either.
+ *
+ * @param {Uint8Array} data
+ * @returns {number}
+ */
+export function peakEntropy(data) {
+  if (data.length === 0) return 0;
+  let peak = 0;
+  for (let at = 0; at < data.length; at += ENTROPY_WINDOW_SIZE) {
+    // Not named `window`: that shadows a DOM global, and this module has to
+    // stay usable outside a browser.
+    const slice = data.subarray(at, Math.min(at + ENTROPY_WINDOW_SIZE, data.length));
+    // A short trailing slice is too small for the measure to mean much.
+    if (slice.length < 256) break;
+    if (isUniform(slice, 0xff) || isUniform(slice, 0x00)) continue;
+    const h = entropy(slice);
+    if (h > peak) peak = h;
+  }
+  return peak;
+}
+
+/**
+ * What high entropy means, given what else is known.
+ *
+ * Entropy on its own cannot separate encrypted bytes from compressed ones —
+ * both are indistinguishable from noise, which is the point of both. Reporting
+ * every compressed blob as "possibly encrypted" trains people to dismiss the
+ * warning, and the one time it matters is the time they dismiss it.
+ *
+ * Two better signals are usually to hand and were previously unused: the
+ * partition table marks partitions as encrypted, and the device says whether
+ * flash encryption is switched on at all.
+ *
+ * @param {number} entropyValue
+ * @param {import('./registry.js').AnalyzeContext} ctx
+ * @returns {'encrypted'|'possibly-encrypted'|'high-entropy'|'unknown'}
+ */
+export function classifyEntropy(entropyValue, ctx) {
+  if (entropyValue <= HIGH_ENTROPY_THRESHOLD) return 'unknown';
+
+  // The chip is the authority. A device that says encryption is off is not to
+  // be contradicted: opaque bytes there are compressed, hashed or already
+  // random. Calling those "possibly encrypted" trains people to dismiss the
+  // warning, and the one time it matters is the time they dismiss it.
+  if (ctx.flashEncryptionEnabled === false) return 'high-entropy';
+  if (ctx.flashEncryptionEnabled === true) return 'encrypted';
+
+  // The partition table's flag is a *policy* bit — "encrypt this partition if
+  // flash encryption is enabled" — not a statement that these bytes are
+  // ciphertext. On a chip with encryption off it means nothing, which is why
+  // it is only consulted once that has been ruled out above.
+  if (ctx.partition?.encrypted) return 'encrypted';
+
+  return 'possibly-encrypted';
+}
+
 /**
  * Fallback analyzer. Always succeeds, never claims to understand the data.
  * @type {BinaryAnalyzer}
@@ -553,14 +648,17 @@ export const rawAnalyzer = {
     const issues = [];
     const allErased = isUniform(data, 0xff);
     const allZero = isUniform(data, 0x00);
-    // Sampling keeps this cheap on multi-megabyte buffers; entropy is stable
-    // enough over a 64 KB window to answer "does this look encrypted".
-    const sample = data.length > 65536 ? data.subarray(0, 65536) : data;
-    const h = allErased || allZero ? 0 : entropy(sample);
-    const likelyEncrypted = h > 7.5;
+    const h = allErased || allZero ? 0 : peakEntropy(data);
+    const encryptionState = classifyEntropy(h, ctx);
 
-    if (likelyEncrypted) {
+    if (encryptionState === 'encrypted') {
+      issues.push({ level: 'warning', code: 'analyze.encrypted', params: { entropy: h } });
+    } else if (encryptionState === 'possibly-encrypted') {
       issues.push({ level: 'warning', code: 'analyze.possiblyEncrypted', params: { entropy: h } });
+    } else if (encryptionState === 'high-entropy') {
+      // Worth saying, but as a fact rather than an alarm: it explains why no
+      // analyzer recognised the region without asserting a cause.
+      issues.push({ level: 'warning', code: 'analyze.highEntropy', params: { entropy: h } });
     }
 
     // The partition table often tells us what this was meant to be, even when
@@ -577,14 +675,14 @@ export const rawAnalyzer = {
     }
 
     return {
-      type: likelyEncrypted ? 'encrypted?' : 'raw',
+      type: encryptionState === 'unknown' || encryptionState === 'high-entropy' ? 'raw' : 'encrypted?',
       confidence: 0,
       metadata: {
         length: data.length,
         entropy: h,
         allErased,
         allZero,
-        encryptionState: likelyEncrypted ? 'possibly-encrypted' : 'unknown',
+        encryptionState,
         expectedFormat: expected?.format ?? null,
         expectedPhase: expected?.phase ?? null,
         contents: allErased ? 'erased' : allZero ? 'zeroed' : 'data',

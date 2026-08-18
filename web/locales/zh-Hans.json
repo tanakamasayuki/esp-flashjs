@@ -264,5 +264,9 @@
   "diff.kind.modified": "修改",
   "diff.kind.added": "新增",
   "diff.kind.removed": "删除",
-  "diff.truncated": "共 {total} 处差异，此处显示前 {shown} 处。"
+  "diff.truncated": "共 {total} 处差异，此处显示前 {shown} 处。",
+  "analyze.encrypted": "已加密（熵 {entropy}）。闪存加密已启用，无法按原格式读取这些字节。",
+  "analyze.highEntropy": "看不到结构（熵 {entropy}）。闪存加密未启用，因此这更可能是压缩数据或本就随机的数据，而非密文。",
+  "nvs.notFlashEncrypted": "闪存加密不涵盖 NVS。除非单独启用了 NVS 加密（使用 nvs_keys 分区中的独立密钥），该分区以明文存储。",
+  "nvs.likelyEncrypted": "没有可读页面，且字节没有结构。这更可能是 NVS 加密，而非空分区。"
 }

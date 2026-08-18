@@ -264,5 +264,9 @@
   "diff.kind.modified": "修改",
   "diff.kind.added": "新增",
   "diff.kind.removed": "刪除",
-  "diff.truncated": "共 {total} 處差異，此處顯示前 {shown} 處。"
+  "diff.truncated": "共 {total} 處差異，此處顯示前 {shown} 處。",
+  "analyze.encrypted": "已加密（熵 {entropy}）。快閃加密已啟用，無法按原格式讀取這些位元組。",
+  "analyze.highEntropy": "看不到結構（熵 {entropy}）。快閃加密未啟用，因此這更可能是壓縮資料或本就隨機的資料，而非密文。",
+  "nvs.notFlashEncrypted": "快閃加密不涵蓋 NVS。除非單獨啟用了 NVS 加密（使用 nvs_keys 分割區中的獨立金鑰），該分割區以明文儲存。",
+  "nvs.likelyEncrypted": "沒有可讀頁面，且位元組沒有結構。這更可能是 NVS 加密，而非空分割區。"
 }

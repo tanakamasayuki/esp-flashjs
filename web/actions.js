@@ -611,7 +611,17 @@ export function addBuffer({ name, data, source, address, partitionLabel, analysi
 
   let analysis = null;
   try {
-    analysis = analyzeBinary(data, analysisContext ?? { offset: address ?? 0 });
+    // What the chip says about itself beats guessing from entropy, so it is
+    // folded in here rather than at every call site.
+    analysis = analyzeBinary(data, {
+      offset: address ?? 0,
+      ...analysisContext,
+      // null means the device could not tell us, which is not the same as
+      // "off" — only an actual false is evidence that opaque bytes are not
+      // ciphertext.
+      flashEncryptionEnabled:
+        store.getState().device.info?.flashEncryptionEnabled ?? undefined,
+    });
     for (const issue of analysis.issues) logIssue(issue);
   } catch (error) {
     store.log('error', 'analyze.failed', {
