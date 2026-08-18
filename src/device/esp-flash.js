@@ -7,10 +7,12 @@
 
 import { CMD, flashBeginPayload, flashDataPayload, flashEndPayload, eraseRegionPayload, readFlashPayload, spiFlashMd5Payload } from '../protocol/commands.js';
 import { md5Hex } from '../binary/hash.js';
+import { slipEncode } from '../protocol/slip.js';
 import { bytesToHex } from '../util/hex.js';
 import { createProgressReporter } from '../util/events.js';
 import {
   AlignmentError,
+  ChecksumError,
   OutOfRangeError,
   UnsupportedOperationError,
   throwIfAborted,
@@ -78,9 +80,9 @@ export class EspFlash {
     const out = new Uint8Array(size);
     let received = 0;
 
-    // READ_FLASH streams data back as a series of unsolicited frames, then a
-    // final frame carrying the MD5 of everything sent. Acknowledge progress by
-    // writing back the running total, which is how the stub paces itself.
+    // READ_FLASH streams the data back as a series of unsolicited SLIP frames.
+    // After each one the host sends the running byte total as an acknowledgement,
+    // which is how the stub paces itself.
     await this.loader.command(
       CMD.READ_FLASH,
       readFlashPayload(address, size, READ_BLOCK_SIZE, 64),
@@ -90,25 +92,39 @@ export class EspFlash {
     while (received < size) {
       throwIfAborted(signal, 'reading');
       const frame = await this.loader.readFrame({ timeoutMs: 10000, signal });
-      if (received + frame.length > size) {
-        out.set(frame.subarray(0, size - received), received);
-        received = size;
-      } else {
-        out.set(frame, received);
-        received += frame.length;
+
+      // Only the final frame may be short. A short one in the middle means the
+      // stream lost bytes, and continuing would return silently wrong data.
+      if (frame.length < READ_BLOCK_SIZE && received + frame.length < size) {
+        throw new ChecksumError(
+          'flash read',
+          `${READ_BLOCK_SIZE} bytes`,
+          `${frame.length} bytes at offset ${received}`,
+        );
       }
+
+      const take = Math.min(frame.length, size - received);
+      out.set(frame.subarray(0, take), received);
+      received += take;
       progress.report(received);
 
+      // The acknowledgement is itself a SLIP frame — sending the four raw bytes
+      // leaves the stub waiting forever, which stalls the transfer.
       const ack = new Uint8Array(4);
       new DataView(ack.buffer).setUint32(0, received, true);
-      await this.loader.transport.write(ack);
+      await this.loader.transport.write(slipEncode(ack));
     }
 
     const digestFrame = await this.loader.readFrame({ timeoutMs: 10000, signal });
+    if (digestFrame.length !== 16) {
+      throw new ChecksumError('flash read', '16-byte digest', `${digestFrame.length} bytes`);
+    }
     const expected = bytesToHex(digestFrame);
     const actual = md5Hex(out);
-    if (expected.length === 32 && expected !== actual) {
-      this.loader.log('warn', 'flash.readDigestMismatch', { expected, actual });
+    if (expected !== actual) {
+      // Returning data the device says is not what it sent would be the worst
+      // possible outcome for a tool people trust with firmware.
+      throw new ChecksumError('flash read', expected, actual);
     }
 
     progress.finish();

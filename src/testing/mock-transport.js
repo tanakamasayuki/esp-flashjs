@@ -106,6 +106,11 @@ export class MockTransport {
     this.commandLog = [];
     /** @type {number} Data commands rejected for a bad checksum. */
     this.badChecksums = 0;
+    /**
+     * In-progress READ_FLASH stream, or null.
+     * @type {{data: Uint8Array, blockSize: number, sent: number}|null}
+     */
+    this.readSession = null;
 
     registerStub(def.stub, MOCK_STUB);
     this.initRegisters();
@@ -181,6 +186,7 @@ export class MockTransport {
   async flushInput() {
     this.outbox.length = 0;
     this.decoder.reset();
+    this.readSession = null;
   }
 
   /* ------------------------------------------------------------------ */
@@ -221,6 +227,16 @@ export class MockTransport {
    * @param {Uint8Array} frame
    */
   handleFrame(frame) {
+    // A READ_FLASH stream is paced by four-byte acknowledgement frames. They
+    // are SLIP frames like everything else, so an unframed acknowledgement
+    // never arrives here and the transfer stalls — exactly what the device
+    // does.
+    if (this.readSession && frame.length === 4) {
+      const total = new DataView(frame.buffer, frame.byteOffset, 4).getUint32(0, true);
+      this.sendReadBlock(total);
+      return;
+    }
+
     if (frame.length < 8 || frame[0] !== 0x00) return;
     const op = frame[1];
     const view = new DataView(frame.buffer, frame.byteOffset, frame.byteLength);
@@ -345,11 +361,13 @@ export class MockTransport {
         const length = pv.getUint32(4, true);
         const blockSize = pv.getUint32(8, true);
         this.respond(op);
-        const region = this.flash.subarray(address, address + length);
-        for (let sent = 0; sent < region.length; sent += blockSize) {
-          this.send(region.subarray(sent, Math.min(sent + blockSize, region.length)));
-        }
-        this.send(md5(region));
+        this.readSession = {
+          data: this.flash.subarray(address, address + length),
+          blockSize,
+          sent: 0,
+        };
+        // One block now; the rest only as acknowledgements come back.
+        this.sendReadBlock(0);
         return;
       }
 
@@ -360,6 +378,32 @@ export class MockTransport {
       default:
         return this.respond(op, undefined, 0, 1, 0x05);
     }
+  }
+
+  /**
+   * Sends the next block of a READ_FLASH stream, once the host has confirmed
+   * how much it has taken.
+   *
+   * @param {number} acknowledged Running byte total reported by the host.
+   */
+  sendReadBlock(acknowledged) {
+    const session = this.readSession;
+    if (!session) return;
+
+    if (acknowledged !== session.sent) {
+      // A real stub would fall out of step here; surfacing it as a stall is
+      // enough to fail a test.
+      return;
+    }
+    if (session.sent >= session.data.length) {
+      this.send(md5(session.data));
+      this.readSession = null;
+      return;
+    }
+
+    const end = Math.min(session.sent + session.blockSize, session.data.length);
+    this.send(session.data.subarray(session.sent, end));
+    session.sent = end;
   }
 
   /**
