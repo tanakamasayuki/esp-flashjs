@@ -1,0 +1,15 @@
+# ESP FlashJS fixture layout.
+#
+# Chosen so one device exercises every format the library parses:
+#   - two OTA slots and NO factory, so the bootloader writes otadata itself
+#   - SPIFFS, LittleFS and FAT side by side
+# Fits in 4 MB, so the same table works on every chip we test.
+#
+# Name,     Type, SubType,  Offset,   Size,     Flags
+nvs,        data, nvs,      0x9000,   0x5000,
+otadata,    data, ota,      0xe000,   0x2000,
+app0,       app,  ota_0,    0x10000,  0x140000,
+app1,       app,  ota_1,    0x150000, 0x140000,
+spiffs,     data, spiffs,   0x290000, 0x50000,
+littlefs,   data, littlefs, 0x2e0000, 0x50000,
+ffat,       data, fat,      0x330000, 0xd0000,
