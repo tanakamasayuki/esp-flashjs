@@ -18,3 +18,4 @@ npm-debug.log*
 test/fixtures/hardware/*/capture.log
 test/fixtures/hardware/*/flash.bin
 test/fixtures/hardware/*/.chunk.bin
+test/fixtures/hardware/*/*.partial

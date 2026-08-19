@@ -96,10 +96,15 @@ A reset for any other reason starts the cycle over — provision, crash, report 
 and ends in the same state. `capture.sh` avoids triggering that by leaving the
 chip in the stub (`--after no-reset`).
 
-**On an ESP32-P4 none of this reaches the port esptool uses.** `USB CDC On Boot`
-is off by default there, so `Serial` goes to UART0 while the `/dev/ttyACM*` node
-is the USB-Serial/JTAG interface. The sketch runs correctly — a valid core dump
-lands in flash — you simply cannot watch it. Check the flash instead:
+**A monitor that raises DTR and RTS on open sees nothing at all.** Those two
+lines drive EN and IO0 through the auto-reset circuit, so a library that
+asserts them by default — pyserial does — holds the board in reset for as long
+as it is connected. The symptom is an empty log from a board that is working
+perfectly, which is easy to read as a hung sketch. `provision.sh` avoids it by
+reading the port through `stty` and a shell redirect; a Python monitor needs
+`dtr = False` and `rts = False` set before `open()`.
+
+When there is no serial to watch, the flash answers the same question:
 
 ```sh
 esptool --port /dev/ttyACM2 --after no-reset read-flash 0x280000 0x10000 /tmp/cd.bin
@@ -124,8 +129,8 @@ The chip is detected automatically and the files land in
 | `PORT` | required | Serial port |
 | `CHIP` | auto-detected | Force `esp32`, `esp32s3`, `esp32p4`, … |
 | `BAUD` | `auto` | Read speed. `auto` measures it (below); a number pins it |
-| `BAUD_CANDIDATES` | 8 rates | What `auto` tries, fastest first |
-| `BAUD_PROBE_SIZE` | `0x40000` | Bytes read per candidate |
+| `BAUD_CANDIDATES` | 10 rates | What `auto` tries, fastest first; down to 38400 |
+| `BAUD_PROBE_SIZE` | `0x40000` | Bytes read per candidate. Quartered and retried if no rate carries it |
 | `WHOLE` | `1` | Read the whole flash once and slice locally; `0` reads region by region |
 | `ATTEMPTS` | `3` | Retries per chunk |
 | `CHUNK` | `0x40000` | Bytes per esptool invocation (256 KB) |
@@ -187,6 +192,34 @@ for b in 115200 230400 250000 460800 500000 750000 921600 1500000; do
     && echo "$b ok" || echo "$b FAILED"
 done
 ```
+
+**Rate and transfer size interact, so a rate alone is not an answer.** The
+measurement above varies the rate at a fixed 256 KB. Vary both, and a second
+pattern appears. Two ESP32 boards on USB-UART bridges, same test, `ok` meaning
+the read completed:
+
+| baud | 256 KB | 64 KB | 16 KB | 4 KB |
+| --- | --- | --- | --- | --- |
+| 1500000 – 230400 | no | no | no | no |
+| 115200 | no | no | no | board A only |
+| 57600 | no | no | board B only | ok |
+| **38400** | no | **ok** | **ok** | **ok** |
+
+Neither board could read 256 KB at any rate, which is what the old candidate
+list probed with — so it tried eight rates, failed all of them, and announced
+that the problem was not speed. It was: **38400 carried 64 KB on both boards**,
+and the list stopped at 115200 because nothing sensible is slower.
+
+Two fixes came out of that. The list now goes down to 38400, and `auto` no
+longer gives up when no rate carries the full probe — it quarters the probe,
+tries again, and adopts whatever size worked as the chunk size.
+
+This does not overturn "slower is not safer": on the link measured above,
+460800 beat 115200 outright. What it adds is that the ceiling a bad link
+imposes is on *bytes per transfer*, and dropping the rate can raise it. Two
+boards of the same model differed here too — 115200 read 4 KB on one and
+nothing on the other — so this is a property of a particular cable, bridge and
+host, and the only way to know is to measure that combination.
 
 If `/sys/bus/usb-serial/devices/ttyUSB*` resolves under `vhci_hcd`, the port is
 a usbip passthrough (this is how WSL2 sees USB devices), which drops bytes far
@@ -362,21 +395,23 @@ chose, so it is safe to commit by construction; a core dump holds RAM, and the
 argument that nothing secret can be in it has to be checked rather than
 assumed.
 
-Neither board carried a MAC address in any byte order — this build does not set
-`CONFIG_ESP_COREDUMP_CAPTURE_DRAM`, so only task stacks and TCBs are captured,
-and the cached base MAC lives in `.bss`. But the two boards did not carry the
-same things:
+None of the three boards carried a MAC address in any byte order — this build
+does not set `CONFIG_ESP_COREDUMP_CAPTURE_DRAM`, so only task stacks and TCBs
+are captured, and the cached base MAC lives in `.bss`. They did not carry the
+same things as each other, though:
 
-| | ESP32-S3 | ESP32-P4 |
-| --- | --- | --- |
-| Dump size | 10884 bytes | 5188 bytes |
-| Strings | task names, ELF note names, the panic message | the same, **plus `k149` and runs of the byte counter** |
+| | ESP32 | ESP32-S3 | ESP32-P4 |
+| --- | --- | --- | --- |
+| Dump size | 10948 bytes | 10884 bytes | 5188 bytes |
+| Strings | 14 | 14 | 15 |
+| Contents | task names, ELF note names, the panic message | the same | the same, **plus `k149` and runs of the byte counter** |
 
 `k149` is the last NVS key this sketch writes and the counter is what it fills
 `/big.bin` with, so on the P4 the crashing task's stack still held remnants of
-the provisioning it had just finished. Harmless here, because the sketch chose
-those values. The point is that what ends up on a stack depends on what the
-application was doing, so it cannot be reasoned out once and trusted after —
+the provisioning it had just finished, where the other two boards' did not.
+Harmless here, because the sketch chose those values. The point is that what
+ends up on a stack depends on what the application was doing and where its
+stack happened to be, so it cannot be reasoned out once and trusted after —
 which is why the strings are printed on every capture rather than checked off
 in this document.
 

@@ -82,11 +82,38 @@ test('the wear-levelling spare sector is found rather than assumed absent', (t) 
   if (!data) return t.skip('no captured fixture');
 
   const fs = parseFat(data);
-  assert.equal(
-    fs.geometry.wlDummySector,
-    1,
-    'a freshly formatted partition holds physical sector 1 spare',
+  assert.ok(
+    fs.geometry.wlDummySector >= 0,
+    'a freshly formatted partition holds one physical sector spare',
   );
+  assert.deepEqual(fs.issues, [], 'and the layout it found explains the volume');
+});
+
+test('a spare sector that has moved on is still found', (t) => {
+  // Captured from a board provisioned several times instead of once from an
+  // erased chip, which is enough for the wear-levelling layer to shift the
+  // spare sector along. It is kept because of what it does to a detector that
+  // only checks the root directory: the root of this volume sits unshifted, so
+  // "no shift" looks correct there and the search stops — and then reads the
+  // sector before /sub, finds nothing in it, and returns a tree with the
+  // subdirectory missing. Four of five files, no issues raised, nothing on the
+  // result saying anything is wrong.
+  const path = new URL('./fixtures/hardware/esp32s3-worn/ffat.bin', import.meta.url);
+  if (!existsSync(path)) return t.skip('no captured fixture');
+  const data = new Uint8Array(readFileSync(path));
+
+  const fs = parseFat(data);
+  assert.deepEqual(
+    fs.files.map((f) => f.path),
+    EXPECTED.map((f) => f.path),
+  );
+  assert.deepEqual(fs.issues, []);
+
+  // The root really is readable under the wrong mapping. That is the whole
+  // difficulty, so pin it rather than leaving it as a claim in a comment.
+  const naive = parseFat(data, { wlDummySector: -1 });
+  assert.ok(naive.files.some((f) => f.path === '/hello.txt'));
+  assert.ok(!naive.files.some((f) => f.path === '/sub/nested.txt'));
 });
 
 test('ignoring the wear-levelling shift produces confident nonsense', (t) => {

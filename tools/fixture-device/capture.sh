@@ -31,11 +31,23 @@ BAUD="${BAUD:-auto}"
 
 # Tried fastest first, so the first success is the best available. Covers both
 # the conventional ladder and the rates firmware bridges implement.
-BAUD_CANDIDATES="${BAUD_CANDIDATES:-1500000 921600 750000 500000 460800 250000 230400 115200}"
+#
+# The list used to stop at 115200 on the grounds that nothing sensible is
+# slower. Two ESP32 boards on USB-UART bridges then read nothing at any rate in
+# it — the probe below asks for 256 KB, and neither board could carry that at
+# any speed — so the script reported "something other than speed is wrong". It
+# was speed: at 38400 both of them read 64 KB at a time without complaint.
+BAUD_CANDIDATES="${BAUD_CANDIDATES:-1500000 921600 750000 500000 460800 250000 230400 115200 57600 38400}"
 
 # Probe with a read big enough to be discriminating. 64 KB passes at rates that
 # collapse over a megabyte; 256 KB is the size that separated them in testing.
 BAUD_PROBE_SIZE="${BAUD_PROBE_SIZE:-0x40000}"
+
+# How much to ask for in one esptool call, and how small to go before giving
+# up. Declared here rather than next to the reader that uses them because
+# choose_baud measures this link and may lower CHUNK_N as a result.
+CHUNK_N=$(( ${CHUNK:-0x40000} ))
+MIN_CHUNK_N=$(( ${MIN_CHUNK:-0x4000} ))
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
 CSV="$HERE/fixture_device/partitions.csv"
@@ -67,22 +79,36 @@ run() { "${ESPTOOL[@]}" --port "$PORT" --baud "$BAUD" --after "$NO_RESET" "$@"; 
 # both an ESP32-S3 and an ESP32-P4 over USB-Serial/JTAG, 256 KB took 26 s at
 # 115200 and 3.4 s at 1500000 — a factor of nearly eight. Whatever the rate
 # means on that path, it is not decoration.
+# A link that cannot carry the probe size at any rate is not necessarily a link
+# that cannot be read. Some can only manage a fraction of it per transfer, and
+# the chunking below copes with that perfectly well once it knows — so the
+# probe shrinks and tries again rather than concluding the port is broken. The
+# size that finally works becomes the chunk size, since it is a measurement of
+# this link and a better number than the default.
 choose_baud() {
-  local candidate
-  echo "measuring the fastest rate this link carries ($(printf '%d' $((BAUD_PROBE_SIZE))) bytes per try)" >&2
-  for candidate in $BAUD_CANDIDATES; do
-    printf '  %8s ' "$candidate" >&2
-    if "${ESPTOOL[@]}" --port "$PORT" --baud "$candidate" --after "$NO_RESET" \
-         "$CMD_READ_FLASH" 0x0 "$BAUD_PROBE_SIZE" "$CHUNK_TMP" >/dev/null 2>&1 \
-       && [ "$(wc -c <"$CHUNK_TMP")" -eq "$((BAUD_PROBE_SIZE))" ]; then
-      echo "ok" >&2
-      BAUD="$candidate"
-      return 0
-    fi
-    echo "no" >&2
+  local candidate size
+  size=$((BAUD_PROBE_SIZE))
+  while [ "$size" -ge "$((MIN_CHUNK_N))" ]; do
+    echo "measuring the fastest rate this link carries ($size bytes per try)" >&2
+    for candidate in $BAUD_CANDIDATES; do
+      printf '  %8s ' "$candidate" >&2
+      if "${ESPTOOL[@]}" --port "$PORT" --baud "$candidate" --after "$NO_RESET" \
+           "$CMD_READ_FLASH" 0x0 "$(printf '0x%x' "$size")" "$CHUNK_TMP" >/dev/null 2>&1 \
+         && [ "$(wc -c <"$CHUNK_TMP")" -eq "$size" ]; then
+        echo "ok" >&2
+        BAUD="$candidate"
+        if [ "$size" -lt "$CHUNK_N" ]; then
+          CHUNK_N="$size"
+          echo "  this link tops out at $size bytes per read; using that as the chunk size" >&2
+        fi
+        return 0
+      fi
+      echo "no" >&2
+    done
+    size=$((size / 4))
   done
-  echo "error: no rate in the candidate list could read from $PORT." >&2
-  echo "Something other than speed is wrong; see the guidance in the README." >&2
+  echo "error: no rate carried even $((MIN_CHUNK_N)) bytes from $PORT." >&2
+  echo "This is not speed; see the guidance in the README." >&2
   return 1
 }
 
@@ -255,10 +281,6 @@ read_exact() {
   return 1
 }
 
-# How much to ask for in one esptool call, and how small to go before giving up.
-CHUNK_N=$(( ${CHUNK:-0x40000} ))
-MIN_CHUNK_N=$(( ${MIN_CHUNK:-0x4000} ))
-
 # Reads a byte range in chunks, retrying and subdividing as needed.
 #
 # esptool's read is all-or-nothing: one dropped byte anywhere and the entire
@@ -267,27 +289,34 @@ MIN_CHUNK_N=$(( ${MIN_CHUNK:-0x4000} ))
 # completes, however many times it is retried, while a 256 KB read succeeds
 # routinely. Chunking makes progress monotonic; halving a chunk that keeps
 # failing adapts to a worse link without anyone having to tune a number.
+# Assembled beside the destination and moved into place only once the whole
+# range is there. Writing straight to $dest truncates it at the first chunk, so
+# a capture that then failed left a 0-byte file where a good fixture used to
+# be — the previous one destroyed by the attempt to replace it, which is the
+# worst possible outcome for a tool whose entire job is producing those files.
 read_range() {
   local label="$1" base="$2" total="$3" dest="$4"
   local part="$CHUNK_TMP"
+  local staging="$dest.partial"
   local pos=0 want="$CHUNK_N" len
-  : > "$dest"
+  : > "$staging"
   while [ "$pos" -lt "$total" ]; do
     len=$(( want < total - pos ? want : total - pos ))
     printf '  %-10s +%-8s ' "$(printf '0x%06x' $((base + pos)))" "$(printf '0x%x' "$len")"
     if read_exact "$label" "$(printf '0x%x' $((base + pos)))" "$(printf '0x%x' "$len")" "$part"; then
-      cat "$part" >> "$dest"
+      cat "$part" >> "$staging"
       pos=$((pos + len))
       printf 'ok  %d%%\n' $((pos * 100 / total))
     elif [ "$want" -le "$MIN_CHUNK_N" ]; then
       printf 'FAILED\n'
-      rm -f "$part"
+      rm -f "$part" "$staging"
       return 1
     else
       want=$((want / 2))
       printf 'FAILED - halving chunk to 0x%x\n' "$want"
     fi
   done
+  mv -f "$staging" "$dest"
   return 0
 }
 

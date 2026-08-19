@@ -348,6 +348,21 @@ try {
       }
     }
 
+    // Two, and only two. A board provisioned twice instead of once from an
+    // erased chip clears each namespace on the second run, which marks every
+    // key from the first as erased: one capture came back with 147 of them.
+    // Everything else about that fixture looked right — all 150 keys present,
+    // all three filesystems intact — and the two erased entries that carry the
+    // meaning were buried among the rest. Run provision.sh, which erases the
+    // chip first, rather than uploading over whatever was there.
+    if (store.erasedEntries.length > 2) {
+      problems.push(
+        `nvs holds ${store.erasedEntries.length} erased entries, expected 2 ` +
+          `("rewritten" and "deleted"). The board was provisioned more than ` +
+          `once; erase it and provision from scratch with provision.sh`,
+      );
+    }
+
     console.log(
       `\ncontent checks: many=${byNs.many?.size ?? 0}/${manyKeys} ` +
         `blobs=${byNs.blobs?.size ?? 0} types=${byNs.types?.size ?? 0} ` +

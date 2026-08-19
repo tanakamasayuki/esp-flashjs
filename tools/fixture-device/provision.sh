@@ -19,13 +19,20 @@ REPO="$(cd "$HERE/../.." && pwd)"
 SKETCH="$HERE/fixture_device"
 CSV="$SKETCH/partitions.csv"
 
-# Deliberately slow. Reading flash is the one operation where a corrupted
-# byte becomes a committed fixture, and 921600 is unreliable on ESP32 boards
-# with a CP2102-class bridge. A 4 MB dump takes minutes at this rate; that is
-# a fine trade for not having to wonder whether the bytes are real.
-BAUD="${BAUD:-115200}"
+# Measured, not chosen. This used to pin 115200 on the grounds that a slow read
+# is a safe read, and then met two boards that could not read at 115200 at all
+# while reading fine at 38400 — so the pinned "safe" rate was the one that
+# failed. capture.sh probes the link and picks; there is nothing to trade off,
+# because a read that loses bytes is discarded and retried rather than
+# committed, whatever the rate.
+BAUD="${BAUD:-auto}"
 MONITOR_BAUD="${MONITOR_BAUD:-115200}"
-WAIT_SECONDS="${WAIT_SECONDS:-90}"
+# The sketch provisions, crashes on purpose to write a core dump, reboots, and
+# only then prints FIXTURE COMPLETE. That is two boots and a panic, so the wait
+# has to cover both. It also doubles as the fixed delay on a board whose Serial
+# does not reach this port, where the marker never arrives and the whole timeout
+# elapses before capture.
+WAIT_SECONDS="${WAIT_SECONDS:-180}"
 CORE="${CORE:-esp32:esp32}"
 
 log()  { printf '\n\033[1m%s\033[0m\n' "$*"; }

@@ -111,6 +111,30 @@ test('NVS is analysed rather than reported as unimplemented', (t) => {
   assert.ok(!result.issues.some((i) => i.code === 'analyze.notImplemented'));
 });
 
+test('a real core dump is named from its subtype, not guessed at', (t) => {
+  const data = region('esp32s3', 'coredump.bin');
+  if (!data) return t.skip('no captured fixture');
+
+  // There is no core dump analyzer, and this pins what happens in the meantime
+  // against bytes a device actually wrote rather than a buffer made up here.
+  // The distinction that matters is "we know what this is and cannot read it"
+  // versus "no idea": the partition table supplies the first, and throwing it
+  // away would be discarding something the device already told us.
+  const result = analyzeBinary(data, {
+    partition: /** @type {any} */ ({ subtypeName: 'coredump', label: 'coredump' }),
+  });
+  assert.equal(result.type, 'raw');
+  assert.equal(result.metadata.expectedFormat, 'coredump');
+  assert.equal(result.metadata.contents, 'data');
+  assert.ok(result.issues.some((i) => i.code === 'analyze.notImplemented'));
+
+  // An ELF holding task stacks is structured, not noise. If this ever climbed
+  // near the threshold, a core dump would start being reported as possibly
+  // encrypted — the accusation the entropy work exists to avoid.
+  assert.ok(result.metadata.entropy < 5, `entropy ${result.metadata.entropy}`);
+  assert.ok(!result.issues.some((i) => i.code.startsWith('analyze.possiblyEncrypted')));
+});
+
 test('an erased partition falls through to raw, whatever its subtype says', () => {
   const erased = new Uint8Array(64 * 1024).fill(0xff);
   for (const subtype of ['nvs', 'spiffs', 'littlefs', 'fat']) {

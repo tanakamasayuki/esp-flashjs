@@ -156,9 +156,16 @@ export function parseFat(data, { wlDummySector } = {}) {
     return { type: 'fat', files: [], geometry: emptyGeometry, issues };
   }
 
-  const dummy = wlDummySector ?? detectWlDummy(data, boot);
-  if (dummy < 0 && wlDummySector === undefined) {
-    issues.push({ level: 'warning', code: 'fat.noValidLayout', params: {} });
+  let dummy = wlDummySector ?? -1;
+  if (wlDummySector === undefined) {
+    // -1 is a legitimate answer here, not only a failure, so the two are
+    // reported separately. An earlier version treated any negative result as
+    // "no valid layout" and warned about a volume it had just read correctly.
+    const found = detectWlDummy(data, boot);
+    dummy = found.dummy;
+    if (!found.confident) {
+      issues.push({ level: 'warning', code: 'fat.noValidLayout', params: {} });
+    }
   }
   const geometry = { ...boot, wlDummySector: dummy };
 
@@ -189,26 +196,132 @@ export function parseFat(data, { wlDummySector } = {}) {
 /**
  * Works out which physical sector the wear-levelling layer is holding spare.
  *
- * The BPB says where the root directory should be; whichever spare position
- * puts real directory entries there is the right one. Guessing "no shift"
- * still parses the BPB and then reads a file allocation table as if it were
- * the root directory, which yields a confidently empty filesystem.
+ * The spare sector shifts everything at or after it by one, so a mapping that
+ * is wrong reads some other sector as the root directory. Guessing "no shift"
+ * on a volume that has one reads a file allocation table as the root and
+ * yields a confidently empty filesystem.
+ *
+ * **Checking the root directory alone is not enough**, which is what three
+ * boards provisioned by the same sketch demonstrated. Their spare sectors
+ * landed in three different places, and one of them — root at physical 3, data
+ * region shifted by one — is indistinguishable from no shift at all if you
+ * only look at the root: both put real directory entries there. The difference
+ * shows up one level down, where the unshifted mapping reads the sector before
+ * `/sub` and finds no entries in it. Every file in the root still parsed, so
+ * nothing about the result looked wrong; the subdirectory had simply vanished.
+ *
+ * So a candidate is scored by walking the whole tree: the root must look like
+ * a directory, and every subdirectory it leads to must look like one too. The
+ * first candidate that resolves all of them wins, which is also what makes
+ * this cheap — the answer is usually the first or second thing tried.
+ *
+ * Where several mappings read identically — a volume with no subdirectories,
+ * or a spare sector below everything the volume uses — they are genuinely
+ * indistinguishable from the bytes, and the order below decides. That is not a
+ * guess with consequences: mappings that read identically *are* identical.
  *
  * @param {Uint8Array} data
  * @param {FatGeometry} boot
- * @returns {number}
+ * @returns {{dummy: number, confident: boolean}}
  */
 function detectWlDummy(data, boot) {
-  const rootStart = boot.reservedSectors + boot.numFats * boot.fatSize;
-  const candidates = [1, -1, ...Array.from({ length: 8 }, (_, i) => i + 2)];
+  // A spare sector past everything in use reads the same as none at all, so
+  // the search only has to cover the volume itself.
+  const candidates = [1, -1, 0, ...Array.from({ length: boot.totalSectors }, (_, i) => i + 2)];
+
+  /** @type {{dummy: number, confident: boolean}|null} */
+  let fallback = null;
 
   for (const dummy of candidates) {
-    const at = wlMapSector(rootStart, dummy) * boot.bytesPerSector;
-    const sector = data.subarray(at, at + boot.bytesPerSector);
-    if (sector.length < DIR_ENTRY_SIZE) continue;
-    if (looksLikeDirectory(sector)) return dummy;
+    const score = scoreLayout(data, boot, dummy);
+    if (score === null) continue; // the root is not a directory under this one
+    if (score.unresolved === 0) return { dummy, confident: true };
+    // Readable but incomplete. Worth keeping in case nothing better turns up,
+    // because a partial tree still beats reporting an empty volume.
+    if (!fallback) fallback = { dummy, confident: false };
   }
-  return -1;
+
+  return fallback ?? { dummy: -1, confident: false };
+}
+
+/**
+ * How well one candidate mapping explains the directory tree.
+ *
+ * @param {Uint8Array} data
+ * @param {FatGeometry} boot
+ * @param {number} dummy
+ * @returns {{unresolved: number}|null} null when the root is not a directory.
+ */
+function scoreLayout(data, boot, dummy) {
+  const geometry = { ...boot, wlDummySector: dummy };
+  /** @param {number} sector */
+  const sectorAt = (sector) => {
+    const at = wlMapSector(sector, dummy) * boot.bytesPerSector;
+    return data.subarray(at, at + boot.bytesPerSector);
+  };
+
+  // FAT12 and FAT16 put the root directory in a fixed area after the tables;
+  // FAT32 makes it an ordinary cluster chain and names its first cluster in
+  // the BPB. Gating on the wrong one would judge every candidate by the same
+  // irrelevant sector.
+  const rootStart = boot.reservedSectors + boot.numFats * boot.fatSize;
+  const rootFirst =
+    boot.bits === 32
+      ? boot.firstDataSector + (boot.rootCluster - 2) * boot.sectorsPerCluster
+      : rootStart;
+  const root = sectorAt(rootFirst);
+  if (root.length < DIR_ENTRY_SIZE || !looksLikeDirectory(root)) return null;
+
+  const fat = readFatTable(data, geometry, sectorAt);
+  /** @type {Issue[]} */
+  const ignored = [];
+  let unresolved = 0;
+
+  /**
+   * @param {number[]} sectors
+   * @param {number} depth
+   * @param {Set<number>} seen
+   */
+  const walk = (sectors, depth, seen) => {
+    if (depth > 8) return;
+    for (const sector of sectors) {
+      const bytes = sectorAt(sector);
+      for (let off = 0; off + DIR_ENTRY_SIZE <= bytes.length; off += DIR_ENTRY_SIZE) {
+        const first = bytes[off];
+        if (first === ENTRY_FREE_AND_LAST) return;
+        if (first === ENTRY_DELETED) continue;
+        const attr = bytes[off + 11];
+        if ((attr & 0x3f) === FAT_ATTR_LONG_NAME) continue;
+        if (attr & FAT_ATTR.VOLUME_ID) continue;
+        if (!(attr & FAT_ATTR.DIRECTORY)) continue;
+        // "." and ".." point back at directories already being walked.
+        if (bytes[off] === 0x2e) continue;
+
+        const cluster = u16(bytes, off + 26) | (u16(bytes, off + 20) << 16);
+        if (cluster < 2) continue;
+        if (seen.has(cluster)) continue;
+        seen.add(cluster);
+
+        const chain = clusterChainSectors(geometry, fat, cluster, ignored);
+        const target = chain.length > 0 ? sectorAt(chain[0]) : null;
+        if (!target || target.length < DIR_ENTRY_SIZE || !looksLikeDirectory(target)) {
+          unresolved += 1;
+          continue;
+        }
+        walk(chain, depth + 1, seen);
+      }
+    }
+  };
+
+  const rootSectors = [];
+  if (geometry.bits === 32) {
+    rootSectors.push(...clusterChainSectors(geometry, fat, geometry.rootCluster, ignored));
+  } else {
+    for (let i = 0; i < geometry.rootDirSectors; i++) rootSectors.push(rootStart + i);
+  }
+  walk(rootSectors, 0, new Set());
+
+  return { unresolved };
 }
 
 /**

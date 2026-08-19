@@ -1,0 +1,18 @@
+# ESP FlashJS hardware fixture — one region, kept for one reason
+chip:      ESP32-S3
+captured:  2026-08-19
+sketch:    tools/fixture-device/fixture_device/fixture_device.ino
+layout:    tools/fixture-device/fixture_device/partitions.csv
+
+Not a normal fixture. This is the ffat partition of a board that had been
+provisioned several times rather than once from an erased chip, so its
+wear-levelling layer had moved the spare sector on. The root directory sits
+unshifted at physical sector 3 while the data region is shifted by one, and
+that combination is what the old detection could not see: the root looked
+right under "no shift", so it stopped there and /sub/nested.txt disappeared
+without a single issue being reported.
+
+Kept so that cannot come back. See test/fat.test.js.
+
+# sha256
+063d6673973ebfda29398b0ef73858becb6ce723ca4f9d25a49b5b4e5d36f7c9  ffat.bin
