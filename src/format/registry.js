@@ -349,20 +349,28 @@ export const otaDataAnalyzer = {
 };
 
 /**
- * Formats we can name from a partition subtype but cannot yet parse.
+ * Formats we can name from a partition subtype but do not parse.
  *
- * Knowing "this is NVS, we just do not read NVS yet" is a different answer from
- * "we have no idea what this is", and the partition table already tells us
- * which one applies. Reporting them the same way wastes information the device
- * handed us.
+ * Knowing "this is a core dump, we just do not read core dumps" is a different
+ * answer from "we have no idea what this is", and the partition table already
+ * tells us which one applies. Reporting them the same way wastes information
+ * the device handed us.
  *
- * @type {Record<string, {format: string, phase: number}>}
+ * `status` used to be a roadmap phase number, which the application repeated
+ * back to the user as "planned for Phase 4". Phases 2, 3 and 4 have all since
+ * shipped, so every one of these promised a release that had already happened
+ * — and `nvs_keys` promised one it was never going to be part of, because
+ * without the eFuse key its contents are ciphertext and there is nothing to
+ * show even in principle. A schedule is the wrong thing to put in front of
+ * someone looking at a partition; whether anyone intends to read it is not.
+ *
+ * @typedef {'unplanned'|'never'} UnimplementedStatus
+ * @type {Record<string, {format: string, status: UnimplementedStatus}>}
  */
 export const UNIMPLEMENTED_SUBTYPE_FORMATS = {
-  // Encrypted key material; there is nothing readable to show even in principle.
-  nvs_keys: { format: 'nvs-keys', phase: 2 },
-  coredump: { format: 'coredump', phase: 4 },
-  phy: { format: 'phy-init', phase: 4 },
+  nvs_keys: { format: 'nvs-keys', status: 'never' },
+  coredump: { format: 'coredump', status: 'unplanned' },
+  phy: { format: 'phy-init', status: 'unplanned' },
 };
 
 
@@ -669,8 +677,8 @@ export const rawAnalyzer = {
     if (expected && !allErased && !allZero) {
       issues.push({
         level: 'warning',
-        code: 'analyze.notImplemented',
-        params: { format: expected.format, phase: expected.phase },
+        code: expected.status === 'never' ? 'analyze.neverImplemented' : 'analyze.notImplemented',
+        params: { format: expected.format },
       });
     }
 
@@ -684,7 +692,7 @@ export const rawAnalyzer = {
         allZero,
         encryptionState,
         expectedFormat: expected?.format ?? null,
-        expectedPhase: expected?.phase ?? null,
+        expectedStatus: expected?.status ?? null,
         contents: allErased ? 'erased' : allZero ? 'zeroed' : 'data',
       },
       regions: [],

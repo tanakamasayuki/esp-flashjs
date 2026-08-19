@@ -166,8 +166,32 @@ export function t(key, params) {
  */
 export function tIssue(issue, prefix) {
   const key = prefix ? `${prefix}.${issue.code}` : issue.code;
-  const translated = t(key, issue.params);
-  return translated === key && prefix ? t(issue.code, issue.params) : translated;
+  const params = localizeIssueParams(issue.params, (k) => messages[k] ?? fallbackMessages[k]);
+  const translated = t(key, params);
+  return translated === key && prefix ? t(issue.code, params) : translated;
+}
+
+/**
+ * Resolves parameters that name something the library has a display name for.
+ *
+ * The library never produces prose, so an issue carries identifiers: a
+ * `format` parameter is `phy-init`, not "PHY init data". Interpolating it
+ * straight into a sentence put the identifier on screen — "This looks like a
+ * phy-init partition" — right next to a heading that had translated the same
+ * thing properly.
+ *
+ * Only `format` is treated this way, and only when a display name exists. An
+ * identifier with no name is shown as it is, which is still better than a
+ * blank, and says plainly that a name is missing.
+ *
+ * @param {Record<string, unknown>|undefined} params
+ * @param {(key: string) => string|undefined} lookup
+ * @returns {Record<string, unknown>|undefined}
+ */
+export function localizeIssueParams(params, lookup) {
+  if (!params || typeof params.format !== 'string') return params;
+  const name = lookup(`analyze.format.${params.format}`);
+  return name === undefined ? params : { ...params, format: name };
 }
 
 /**

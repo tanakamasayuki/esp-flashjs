@@ -406,10 +406,20 @@ export class EspInspector extends HTMLElement {
       const summary = document.createElement('p');
       summary.className = 'summary';
       const expected = /** @type {string|null} */ (analysis.metadata.expectedFormat ?? null);
+      // "Not implemented" and "will never be implemented" are different news.
+      // A coredump partition is waiting for someone to write a parser; an
+      // nvs_keys partition is ciphertext without the eFuse key, so there is
+      // nothing to wait for.
+      // Spelled out as two calls rather than one with the key chosen inline,
+      // so `lint:locales` can see both keys and check they exist.
+      const why =
+        analysis.metadata.expectedStatus === 'never'
+          ? t('analyze.unreadableShort')
+          : t('analyze.unsupportedShort');
       summary.textContent = expected
         ? // The partition table says what this is; saying "raw binary, 0%" when
           // we already know it is NVS throws that away.
-          `${t(`analyze.format.${expected}`)} — ${t('analyze.unsupportedShort')}`
+          `${t(`analyze.format.${expected}`)} — ${why}`
         : `${t(`analyze.type.${analysis.type}`)} · ${t('inspector.confidence')} ${Math.round(analysis.confidence * 100)}%`;
       container.append(summary);
 

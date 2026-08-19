@@ -440,7 +440,7 @@ test('an unparsed partition is named from its subtype, not left as "raw"', () =>
   const result = analyzeBinary(data, { partition: coredump });
 
   assert.equal(result.metadata.expectedFormat, 'coredump');
-  assert.equal(result.metadata.expectedPhase, 4);
+  assert.equal(result.metadata.expectedStatus, 'unplanned');
   assert.equal(result.metadata.contents, 'data');
   assert.ok(result.issues.some((i) => i.code === 'analyze.notImplemented'));
 });

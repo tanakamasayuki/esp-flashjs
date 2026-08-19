@@ -26,10 +26,36 @@ import {
   shouldAutoRead,
 } from '../web/device-session.js';
 import { decodeTextFile } from '../web/format-values.js';
+import { localizeIssueParams } from '../web/i18n.js';
 
 /* -------------------------------------------------------------------------- */
 /* Store                                                                       */
 /* -------------------------------------------------------------------------- */
+
+test('an issue naming a format shows the name, not the identifier', () => {
+  // The library never produces prose, so it hands over `phy-init` rather than
+  // "PHY init data". Interpolated straight into a sentence that identifier
+  // reached the screen — beside a heading that had translated the same thing.
+  const en = JSON.parse(
+    readFileSync(new URL('../web/locales/en.json', import.meta.url), 'utf8'),
+  );
+  const lookup = (/** @type {string} */ key) => en[key];
+
+  assert.deepEqual(localizeIssueParams({ format: 'phy-init' }, lookup), {
+    format: 'PHY init data',
+  });
+
+  // An identifier with no display name is left alone. Showing it is worse than
+  // showing a name and better than showing a blank.
+  assert.deepEqual(localizeIssueParams({ format: 'not-a-format' }, lookup), {
+    format: 'not-a-format',
+  });
+
+  // Everything else passes through untouched, including params with no format.
+  assert.deepEqual(localizeIssueParams({ cluster: 7 }, lookup), { cluster: 7 });
+  assert.equal(localizeIssueParams(undefined, lookup), undefined);
+  assert.deepEqual(localizeIssueParams({ format: 12 }, lookup), { format: 12 });
+});
 
 test('store notifies only when the selected value changes', () => {
   const store = createStore();

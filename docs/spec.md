@@ -1735,13 +1735,20 @@ usually what separates them:
 | State | What is known | How it is reported |
 | --- | --- | --- |
 | Parsed | An analyzer read it | The analysis, with a confidence ([9.3](#93-confidence-scale)) |
-| Named but unparsed | The subtype says what it is; no parser exists | An `analyze.notImplemented` warning naming the format, over a raw view |
+| Named but unparsed | The subtype says what it is; no parser exists | A warning naming the format, over a raw view: `analyze.notImplemented`, or `analyze.neverImplemented` where nobody intends to write a parser |
 | Unknown | Nothing to go on | `Unknown / Raw` |
 
 The middle state is the one worth keeping separate. "This is a core dump, and
 core dumps are not read" is a different answer from "no idea what this is", and
 reporting them the same way discards what the device already told us. The
 mapping is `UNIMPLEMENTED_SUBTYPE_FORMATS` in `src/format/registry.js`.
+
+It records a `status` rather than a schedule. It used to hold a roadmap phase
+number, which the application repeated back as "planned for Phase 4" — and
+phases 2, 3 and 4 have all shipped, so every entry promised a release that had
+already happened. `nvs_keys` promised one it was never going to be part of. A
+schedule is the wrong thing to put in front of someone looking at a partition;
+whether anyone intends to read it is not.
 
 A subtype hint is only trusted for a region that holds something. A blank
 partition is reported as erased, not as an unimplemented format — otherwise a

@@ -20,6 +20,7 @@ import {
   HIGH_ENTROPY_THRESHOLD,
   peakEntropy,
 } from '../src/core.js';
+import { UNIMPLEMENTED_SUBTYPE_FORMATS } from '../src/format/registry.js';
 
 const CHIPS = ['esp32', 'esp32s3', 'esp32p4'];
 
@@ -133,6 +134,55 @@ test('a real core dump is named from its subtype, not guessed at', (t) => {
   // encrypted — the accusation the entropy work exists to avoid.
   assert.ok(result.metadata.entropy < 5, `entropy ${result.metadata.entropy}`);
   assert.ok(!result.issues.some((i) => i.code.startsWith('analyze.possiblyEncrypted')));
+});
+
+test('every subtype we can name but not read has a message to say so with', () => {
+  // `tIssue` builds its key from the issue code at runtime, so `lint:locales`
+  // — which looks for literal t('...') calls — cannot see these. A typo in a
+  // code, or a new entry in the table with no message written for it, would
+  // reach the user as the raw key and nothing would have failed first.
+  const en = JSON.parse(
+    readFileSync(new URL('../web/locales/en.json', import.meta.url), 'utf8'),
+  );
+
+  // Something in it, or the analyzer reports "erased" and never gets here.
+  const data = new Uint8Array(0x2000).fill(0xff);
+  for (let i = 0; i < data.length; i += 64) data[i] = 0x01;
+
+  for (const [subtype, entry] of Object.entries(UNIMPLEMENTED_SUBTYPE_FORMATS)) {
+    const result = analyzeBinary(data, {
+      partition: /** @type {any} */ ({ subtypeName: subtype }),
+    });
+    assert.equal(result.metadata.expectedFormat, entry.format, subtype);
+    assert.equal(result.metadata.expectedStatus, entry.status, subtype);
+
+    const issue = result.issues.find((i) => i.code.startsWith('analyze.'));
+    assert.ok(issue, `${subtype} should say something`);
+    assert.ok(en[issue.code], `${issue.code} has no English message`);
+    assert.ok(en[`analyze.format.${entry.format}`], `analyze.format.${entry.format} is missing`);
+
+    // The message may only ask for what the issue carries. It used to take a
+    // roadmap phase number as well, and went on repeating one long after that
+    // release had shipped.
+    const wanted = [...en[issue.code].matchAll(/\{(\w+)\}/g)].map((m) => m[1]);
+    for (const name of wanted) {
+      assert.ok(name in issue.params, `${issue.code} wants {${name}}, which the issue does not carry`);
+    }
+  }
+});
+
+test('a format nobody intends to read says so, rather than promising a release', () => {
+  const data = new Uint8Array(0x2000).fill(0x5a);
+  const result = analyzeBinary(data, {
+    partition: /** @type {any} */ ({ subtypeName: 'nvs_keys' }),
+  });
+
+  // Without the eFuse key an nvs_keys partition is ciphertext, so "not yet"
+  // would be a promise nothing can keep. It is a different answer from the one
+  // a core dump gets, and the application shows a different sentence for it.
+  assert.equal(result.metadata.expectedStatus, 'never');
+  assert.ok(result.issues.some((i) => i.code === 'analyze.neverImplemented'));
+  assert.ok(!result.issues.some((i) => i.code === 'analyze.notImplemented'));
 });
 
 test('an erased partition falls through to raw, whatever its subtype says', () => {
