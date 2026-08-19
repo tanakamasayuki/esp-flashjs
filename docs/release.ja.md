@@ -128,6 +128,25 @@ GitHub Release（Releases → Draft a new release）はタグを選んで手で�
 
 ## 5. 困ったとき
 
+**`404 Not Found - PUT https://registry.npmjs.org/esp-flashjs`**
+
+ログインが切れています。npm は**認証できない publish を 401 ではなく 404 で返します**。権限の無い相手にパッケージの存在有無を教えないためですが、そのせいで**実際にいちばん遭遇するエラーが、まったく別のエラーに見えます**。`~/.npmrc` の `_authToken` は残ったままで、受け付けられなくなっているだけです。
+
+```sh
+npm whoami                     # ここで 401 なら確定。名前ではなくトークンの問題
+npm login                      # 認証アプリの 6 桁を入力
+npm whoami                     # 名前が返れば通っている
+npm publish --access public
+```
+
+**この時点で `npm version` は完了しています。** コミットもタグもできており、失敗したのは publish だけです。**もう一度 `npm version` を走らせないでください。** バージョン番号を無駄に1つ消費します。
+
+`npm login` が成功しても 404 が続く場合は、そのアカウントがパッケージの所有者か確認します。
+
+```sh
+npm owner ls esp-flashjs
+```
+
 **`403 Two-factor authentication ... is required`**
 
 2FA のワンタイムコードが渡っていません。`npm version` は済んでいるので publish だけやり直せば OK です。

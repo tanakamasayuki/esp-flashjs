@@ -162,6 +162,32 @@ verified on hardware.
 
 ## 5. When something goes wrong
 
+**`404 Not Found - PUT https://registry.npmjs.org/esp-flashjs`**
+
+The login expired. npm answers a publish it cannot authenticate with **404
+rather than 401**, so that the registry never reveals whether a package exists
+to someone without rights to it — which makes the one error you will actually
+hit read like the wrong one. The `_authToken` in `~/.npmrc` is still there; it
+is simply no longer accepted.
+
+```sh
+npm whoami                     # 401 here confirms it: the token, not the name
+npm login                      # then the six digits from your authenticator
+npm whoami                     # a name means you are through
+npm publish --access public
+```
+
+**`npm version` has already run at this point** — the commit and the tag exist.
+Only the publish failed, so do not run it again; that would burn a version
+number for nothing.
+
+If `npm login` succeeds and the 404 persists, check that the account is the one
+that owns the package:
+
+```sh
+npm owner ls esp-flashjs
+```
+
 **`403 Two-factor authentication ... is required`**
 
 The one-time code did not reach npm. `npm version` already succeeded, so only
