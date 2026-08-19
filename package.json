@@ -1,6 +1,6 @@
 {
   "name": "esp-flashjs",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "JavaScript toolkit for ESP32 flash analysis, editing and programming.",
   "type": "module",
   "license": "MIT",

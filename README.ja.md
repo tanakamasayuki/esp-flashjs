@@ -18,7 +18,7 @@ Chrome か Edge で開いてボードを繋ぐだけです。インストール�
 ESP32 のフラッシュメモリを JavaScript から読み出し・解析・編集・書き戻しするライブラリです。実行時依存はゼロ、ビルドも不要で、ブラウザと Node.js がそのまま解釈できる素の ESM です。
 
 ```js
-import { parsePartitionTable } from 'https://cdn.jsdelivr.net/npm/esp-flashjs@0.1.0/dist/esp-flashjs.core.min.js';
+import { parsePartitionTable } from 'https://cdn.jsdelivr.net/npm/esp-flashjs@1.0.0/dist/esp-flashjs.core.min.js';
 
 const table = parsePartitionTable(bytes);
 console.log(table.partitions);
@@ -64,7 +64,7 @@ CDN からならインストールも不要です。
 
 ```html
 <script type="module">
-  import { analyzeBinary } from 'https://cdn.jsdelivr.net/npm/esp-flashjs@0.1.0/dist/esp-flashjs.min.js';
+  import { analyzeBinary } from 'https://cdn.jsdelivr.net/npm/esp-flashjs@1.0.0/dist/esp-flashjs.min.js';
 </script>
 ```
 

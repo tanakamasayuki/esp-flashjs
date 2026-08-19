@@ -1,6 +1,8 @@
 # Changelog / 変更履歴
 
 ## Unreleased
+
+## 1.0.0
 - (EN) First release. A dependency-free, build-step-free JavaScript library for reading, analysing, editing and writing ESP32 flash — the serial bootloader protocol, the flasher stub, partition tables, firmware images, otadata, NVS, SPIFFS, LittleFS and FAT — plus a Web Serial reference application. Runs from a `<script type="module">` or from Node; `esp-flashjs/core` is the parsers alone, with no serial code.
 - (JA) 初回リリース。依存もビルド手順も不要な JavaScript ライブラリで、ESP32 のフラッシュを読み・解析し・編集し・書き戻す。シリアルブートローダのプロトコル、flasher stub、パーティションテーブル、ファームウェアイメージ、otadata、NVS、SPIFFS、LittleFS、FAT に対応し、Web Serial のリファレンスアプリを同梱する。`<script type="module">` からも Node からも動き、`esp-flashjs/core` はパーサのみでシリアル関連を含まない。
 - (EN) Everything is verified against ESP32, ESP32-S3 and ESP32-P4 hardware, and the test fixtures are **bytes those devices wrote** rather than bytes this project generated. That distinction is the reason this release exists: a parser and the fixture it is tested against, written from the same reading of a format, agree with each other whether or not that reading was correct. Nine faults survived a complete, passing test suite until real captures replaced the generated ones.

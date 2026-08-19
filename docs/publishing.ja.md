@@ -14,7 +14,7 @@
 | --- | --- | --- |
 | **GitHub Pages** | Web アプリを試したい人 | `https://tanakamasayuki.github.io/esp-flashjs/` |
 | **npm** | 自分のプロジェクトに組み込む人 | `npm i esp-flashjs` |
-| **CDN** | ビルドなしで使いたい人 | `https://cdn.jsdelivr.net/npm/esp-flashjs@0.1.0/dist/esp-flashjs.min.js` |
+| **CDN** | ビルドなしで使いたい人 | `https://cdn.jsdelivr.net/npm/esp-flashjs@1.0.0/dist/esp-flashjs.min.js` |
 
 ### 1.1 ライブラリ配布は plainbind の方式を踏襲する
 
@@ -255,7 +255,7 @@ npm に公開すれば以下がそのまま動く。追加作業は不要。
 ```html
 <!-- 推奨: jsDelivr -->
 <script type="module">
-  import { parsePartitionTable } from 'https://cdn.jsdelivr.net/npm/esp-flashjs@0.1.0/dist/esp-flashjs.core.min.js';
+  import { parsePartitionTable } from 'https://cdn.jsdelivr.net/npm/esp-flashjs@1.0.0/dist/esp-flashjs.core.min.js';
 </script>
 ```
 
@@ -269,7 +269,7 @@ npm に公開すれば以下がそのまま動く。追加作業は不要。
 
 ```html
 <script type="module">
-  import { parseNvs } from 'https://cdn.jsdelivr.net/npm/esp-flashjs@0.1.0/src/format/nvs/parse.js';
+  import { parseNvs } from 'https://cdn.jsdelivr.net/npm/esp-flashjs@1.0.0/src/format/nvs/parse.js';
 </script>
 ```
 
