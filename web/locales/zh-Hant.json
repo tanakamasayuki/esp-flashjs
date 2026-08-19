@@ -241,7 +241,6 @@
   "nvs.edit.unsupported": "此處無法編輯 blob：文字方塊不適合任意位元組資料。",
   "nvs.apply": "寫回",
   "nvs.apply.hint": "根據這些修改重建分割區映像並寫入。寫入前會先備份現有內容。",
-  "nvs.apply.readonly": "該映像來自檔案，沒有可寫回的目標。",
   "nvs.revert": "放棄修改",
   "nvs.stats": "{entries} 條目 · {namespaces} 命名空間 · 已擦除 {erased}",
   "nvs.erased": "已擦除",
@@ -278,8 +277,11 @@
   "fs.view": "文字",
   "fs.close": "關閉",
   "fs.view.hint": "以文字方式開啟。在儲存並寫回之前不會寫入任何內容。",
-  "fs.view.readonly": "唯讀：請連線並載入 stub 後再編輯。",
   "fs.saveText": "寫入映像",
   "fs.saveText.hint": "僅保存在記憶體中。按下寫回才會送到裝置。",
-  "device.baudRate.note": "更快並不更危險，更慢也不更安全。哪個速率可用取決於板子的 USB 橋接、線材與主機，順序也無法預測。讀取失敗時請換一個速率，而不是一味調低。連線後會檢查鏈路，若無法保持則回落到 115200。"
+  "device.baudRate.note": "更快並不更危險，更慢也不更安全。哪個速率可用取決於板子的 USB 橋接、線材與主機，順序也無法預測。讀取失敗時請換一個速率，而不是一味調低。連線後會檢查鏈路，若無法保持則回落到 115200。",
+  "writeback.noPartition": "此映像背後沒有分割區，因此無處寫回。若要就地編輯，請先從裝置讀取。",
+  "writeback.disconnected": "未連線。要寫回變更，請連線到持有該分割區的裝置。",
+  "writeback.noStub": "flasher stub 未執行，而抹除與寫入需要它。重新連線即可載入。",
+  "writeback.readonly": "唯讀。"
 }

@@ -8,6 +8,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import { createStore, initialState } from '../web/store.js';
 import {
@@ -18,6 +19,7 @@ import {
   parseValue,
 } from '../web/format-values.js';
 import { zip, toDosTimestamp } from '../web/zip.js';
+import { writeBackBlocker, WRITE_BACK_BLOCKERS } from '../web/write-back.js';
 import { decodeTextFile } from '../web/format-values.js';
 
 /* -------------------------------------------------------------------------- */
@@ -352,4 +354,53 @@ test('only real text is offered for editing', () => {
   assert.equal(decodeTextFile(Uint8Array.of(0xff, 0xfe, 0x00, 0x01)), null);
   assert.equal(decodeTextFile(Uint8Array.of(0x68, 0x00, 0x69)), null, 'a NUL means not text');
   assert.equal(decodeTextFile(new Uint8Array(300), 256), null, 'and a huge file is not a textarea');
+});
+
+/* -------------------------------------------------------------------------- */
+/* Write-back availability                                                     */
+/* -------------------------------------------------------------------------- */
+
+const READY = { partition: { label: 'nvs' }, status: 'connected', usingStub: true };
+
+test('an image read from a partition can be written back to it', () => {
+  // Reading a partition selects the resulting buffer rather than the partition,
+  // so the editor went read-only the moment its data arrived and came back only
+  // if you clicked the partition in the list again.
+  assert.equal(writeBackBlocker(READY), null);
+});
+
+test('each reason is reported as itself, not as the others', () => {
+  // Telling someone looking at a file they opened from disk to connect and
+  // load the stub sends them to fix something that was never wrong.
+  assert.equal(
+    writeBackBlocker({ ...READY, partition: null }),
+    'writeback.noPartition',
+  );
+  assert.equal(
+    writeBackBlocker({ ...READY, status: 'disconnected' }),
+    'writeback.disconnected',
+  );
+  assert.equal(writeBackBlocker({ ...READY, usingStub: false }), 'writeback.noStub');
+});
+
+test('having nowhere to write outranks being disconnected', () => {
+  // Connecting would not help, so saying "not connected" would be advice that
+  // cannot work.
+  assert.equal(
+    writeBackBlocker({ partition: null, status: 'disconnected', usingStub: false }),
+    'writeback.noPartition',
+  );
+});
+
+test('every reason has something to say in every language', () => {
+  // These keys are chosen at runtime, so the locale lint — which only sees
+  // literal t('...') calls — cannot cover them.
+  for (const file of ['en', 'ja', 'zh-Hans', 'zh-Hant']) {
+    const catalogue = JSON.parse(
+      readFileSync(new URL(`../web/locales/${file}.json`, import.meta.url), 'utf8'),
+    );
+    for (const key of WRITE_BACK_BLOCKERS) {
+      assert.ok(catalogue[key], `${file}.json is missing ${key}`);
+    }
+  }
 });

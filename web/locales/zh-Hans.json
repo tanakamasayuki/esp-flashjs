@@ -241,7 +241,6 @@
   "nvs.edit.unsupported": "此处无法编辑 blob：文本框不适合任意字节数据。",
   "nvs.apply": "写回",
   "nvs.apply.hint": "根据这些修改重建分区镜像并写入。写入前会先备份现有内容。",
-  "nvs.apply.readonly": "该镜像来自文件，没有可写回的目标。",
   "nvs.revert": "放弃修改",
   "nvs.stats": "{entries} 条目 · {namespaces} 命名空间 · 已擦除 {erased}",
   "nvs.erased": "已擦除",
@@ -278,8 +277,11 @@
   "fs.view": "文本",
   "fs.close": "关闭",
   "fs.view.hint": "以文本方式打开。在保存并写回之前不会写入任何内容。",
-  "fs.view.readonly": "只读：请连接并加载 stub 后再编辑。",
   "fs.saveText": "写入镜像",
   "fs.saveText.hint": "仅保存在内存中。按下写回才会发送到设备。",
-  "device.baudRate.note": "更快并不更危险，更慢也不更安全。哪个速率可用取决于板子的 USB 桥接、线缆和主机，顺序也无法预测。读取失败时请换一个速率，而不是一味调低。连接后会检查链路，若无法保持则回落到 115200。"
+  "device.baudRate.note": "更快并不更危险，更慢也不更安全。哪个速率可用取决于板子的 USB 桥接、线缆和主机，顺序也无法预测。读取失败时请换一个速率，而不是一味调低。连接后会检查链路，若无法保持则回落到 115200。",
+  "writeback.noPartition": "该镜像背后没有分区，因此无处写回。若要就地编辑，请先从设备读取。",
+  "writeback.disconnected": "未连接。要写回更改，请连接到持有该分区的设备。",
+  "writeback.noStub": "flasher stub 未运行，而擦除与写入需要它。重新连接即可加载。",
+  "writeback.readonly": "只读。"
 }

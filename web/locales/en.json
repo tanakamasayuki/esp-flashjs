@@ -241,7 +241,6 @@
   "nvs.edit.unsupported": "Blobs are not editable here: a text box is the wrong instrument for arbitrary bytes.",
   "nvs.apply": "Write back",
   "nvs.apply.hint": "Rebuilds the partition image from these edits and writes it, after backing up what is there now.",
-  "nvs.apply.readonly": "This image came from a file, so there is nowhere to write it back to.",
   "nvs.revert": "Discard edits",
   "nvs.stats": "{entries} entries · {namespaces} namespaces · {erased} erased",
   "nvs.erased": "erased",
@@ -278,8 +277,11 @@
   "fs.view": "Text",
   "fs.close": "Close",
   "fs.view.hint": "Opens the file as text. Nothing is written until you save and then write back.",
-  "fs.view.readonly": "Read-only: connect and load the stub to edit.",
   "fs.saveText": "Save into the image",
   "fs.saveText.hint": "Held in memory only. Press write back to send it to the device.",
-  "device.baudRate.note": "Faster is not safer, and the order is not predictable — it depends on the board's USB bridge, the cable and the host. If reads fail, try a different rate rather than a slower one. The link is checked after connecting and falls back to 115200 if it does not hold."
+  "device.baudRate.note": "Faster is not safer, and the order is not predictable — it depends on the board's USB bridge, the cable and the host. If reads fail, try a different rate rather than a slower one. The link is checked after connecting and falls back to 115200 if it does not hold.",
+  "writeback.noPartition": "There is no partition behind this image, so there is nowhere to write it back to. Read one from a device to edit it in place.",
+  "writeback.disconnected": "Not connected. Connect to the device holding this partition to write changes back.",
+  "writeback.noStub": "The flasher stub is not running, and erase and write need it. Reconnect to load it.",
+  "writeback.readonly": "Read-only."
 }

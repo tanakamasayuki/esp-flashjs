@@ -95,6 +95,15 @@ library against fixtures and a mock the library itself produced.
   bad cable. `EspLoader` now queues whole operations, and the web app refuses
   to start a second one rather than queuing a destructive write behind a long
   read.
+- **Every editor went read-only the moment its data arrived.** Reading a
+  partition selects the resulting buffer rather than the partition, and a
+  buffer had forgotten which partition it came from — so the NVS edit buttons
+  and the filesystem text editor were unavailable right after a read and came
+  back only if you clicked the partition in the list again.
+- **"Read-only" gave the wrong reason.** It said to connect and load the stub
+  even when the image had been opened from a file, where connecting fixes
+  nothing. The three reasons — nothing to write back to, not connected, no stub
+  — are now reported as themselves.
 - **An extracted file did not keep its own name.** `hello.txt` arrived as
   `spiffs_hello.txt`; the collision that was guarding against is one browsers
   already handle by appending a number.

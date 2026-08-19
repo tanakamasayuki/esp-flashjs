@@ -90,11 +90,22 @@ export class EspNvsTree extends HTMLElement {
    * @param {import('../esp-flashjs.js').NvsStore} store
    * @param {object} [options]
    * @param {(store: import('../esp-flashjs.js').NvsStore) => void} [options.onApply]
+   * @param {string|null} [options.blocker] Translation key for why write-back
+   *   is unavailable, when it is.
    *   Called when the user asks to write the edits back. Absent means read-only.
    */
-  show(store, { onApply } = {}) {
+  show(store, { onApply, blocker } = {}) {
     this._store = store;
     this._onApply = onApply ?? null;
+    /**
+     * Why write-back is unavailable, if it is.
+     *
+     * Three different reasons need three different answers, and the one it
+     * used to give — "this came from a file" — was wrong two times out of
+     * three.
+     * @type {string|null}
+     */
+    this._blocker = blocker ?? null;
     this._editing = null;
     this._render();
   }
@@ -117,7 +128,7 @@ export class EspNvsTree extends HTMLElement {
     apply.className = 'primary';
     apply.textContent = t('nvs.apply');
     apply.disabled = !this._onApply || pending.length === 0;
-    apply.title = this._onApply ? t('nvs.apply.hint') : t('nvs.apply.readonly');
+    apply.title = this._onApply ? t('nvs.apply.hint') : t(this._blocker ?? 'writeback.readonly');
     apply.addEventListener('click', () => this._onApply?.(store));
     toolbar.append(apply);
 

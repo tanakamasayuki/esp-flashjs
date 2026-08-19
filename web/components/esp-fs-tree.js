@@ -96,6 +96,15 @@ export class EspFsTree extends HTMLElement {
     this._changed = new Map();
     /** @type {((store: FsStore) => void)|undefined} */
     this._onApply = undefined;
+    /**
+     * Why write-back is unavailable, if it is.
+     *
+     * Naming the actual reason matters here: "connect and load the stub" is
+     * useless advice to someone looking at an image they opened from disk,
+     * where connecting would not help and nothing is wrong.
+     * @type {string|null}
+     */
+    this._blocker = null;
     /** Path whose text editor is open, if any. @type {string|null} */
     this._open = null;
     /**
@@ -129,6 +138,7 @@ export class EspFsTree extends HTMLElement {
    * @param {(store: FsStore) => void} [options.onApply]
    *   Omitted when there is nowhere to write back to, which turns the editing
    *   controls off rather than letting them build up changes with no exit.
+   * @param {string|null} [options.blocker] Translation key for why not.
    */
   show(image, name, options = {}) {
     // Edits are dropped only when the image itself is different. Being shown
@@ -139,6 +149,7 @@ export class EspFsTree extends HTMLElement {
     this._image = image;
     this._name = name;
     this._onApply = options.onApply;
+    this._blocker = options.blocker ?? null;
     if (replaced) {
       this._store = null;
       this._changed.clear();
@@ -389,7 +400,7 @@ export class EspFsTree extends HTMLElement {
     if (!row.directory && this._looksTextual(row)) {
       const open = document.createElement('button');
       open.textContent = this._open === row.path ? t('fs.close') : t('fs.view');
-      open.title = this._onApply ? t('fs.view.hint') : t('fs.view.readonly');
+      open.title = this._onApply ? t('fs.view.hint') : t(this._blocker ?? 'writeback.readonly');
       open.addEventListener('click', () => {
         this._open = this._open === row.path ? null : row.path;
         this._render();
@@ -485,7 +496,7 @@ export class EspFsTree extends HTMLElement {
     where.className = 'where';
     // Saying it out loud, because a textarea that saves instantly is the
     // expectation everywhere else and this one deliberately does not.
-    where.textContent = this._onApply ? t('fs.saveText.hint') : t('fs.view.readonly');
+    where.textContent = this._onApply ? t('fs.saveText.hint') : t(this._blocker ?? 'writeback.readonly');
     bar.append(where);
 
     cell.append(bar);

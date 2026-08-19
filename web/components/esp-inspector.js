@@ -21,6 +21,7 @@ import {
   setInspectorTab,
   writePartition,
 } from '../actions.js';
+import { writeBackBlocker } from '../write-back.js';
 import './esp-hex-viewer.js';
 import './esp-nvs-tree.js';
 import { openConfirm } from './esp-confirm-dialog.js';
@@ -143,7 +144,14 @@ export class EspInspector extends HTMLElement {
         address: buffer.address ?? 0,
         size: buffer.data.length,
         analysis: buffer.analysis,
-        partition: null,
+        // A buffer read from a partition still belongs to it. Reading one
+        // selects the buffer rather than the partition, so forgetting this
+        // made every editor go read-only the moment its data arrived — and
+        // come back if you clicked the partition in the list again.
+        partition: buffer.partitionLabel
+          ? (state.partitions.table?.partitions.find((p) => p.label === buffer.partitionLabel) ??
+            null)
+          : null,
       };
     }
 
@@ -416,12 +424,11 @@ export class EspInspector extends HTMLElement {
     const tree = this._fs.element;
     const partition = target.partition;
     const state = store.getState();
-    // Writing needs somewhere to write to. An image opened from a file has no
-    // partition behind it, and the stub is what makes erase and write possible
-    // at all, so both are required before the editing controls appear.
-    const canWrite = Boolean(
-      partition && state.device.status === 'connected' && state.device.usingStub,
-    );
+    const blocker = writeBackBlocker({
+      partition: target.partition,
+      status: state.device.status,
+      usingStub: state.device.usingStub,
+    });
 
     // The element reads its data through a method rather than an attribute: an
     // FsImage carries lazy `read()` closures over the buffer, and those do not
@@ -430,7 +437,8 @@ export class EspInspector extends HTMLElement {
       /** @type {import('../esp-flashjs.js').FsImage} */ (analysis.model),
       partition?.label ?? 'fs',
       {
-        onApply: canWrite
+        blocker,
+        onApply: !blocker
           ? (edited) => {
               openConfirm({
                 partition,
@@ -460,15 +468,15 @@ export class EspInspector extends HTMLElement {
     const nvs = /** @type {import('../esp-flashjs.js').NvsStore} */ (analysis.model);
     const partition = target.partition;
     const state = store.getState();
-    // Writing needs somewhere to write to. An image opened from a file has no
-    // partition behind it, and the stub is what makes erase and write possible
-    // at all, so both are required before the button does anything.
-    const canWrite = Boolean(
-      partition && state.device.status === 'connected' && state.device.usingStub,
-    );
+    const blocker = writeBackBlocker({
+      partition: target.partition,
+      status: state.device.status,
+      usingStub: state.device.usingStub,
+    });
 
     tree.show(nvs, {
-      onApply: canWrite
+      blocker,
+      onApply: !blocker
         ? (edited) => {
             const changes = edited.changes();
             openConfirm({
