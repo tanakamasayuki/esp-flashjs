@@ -58,7 +58,7 @@ Device → Flash → Partition → Data Structure → Edit → Rebuild → Write
 | Partition | Partition Table 解析・生成、Partition 単位の操作 |
 | Image | ESP firmware image 解析 |
 | NVS | 解析・編集・再構築・Diff |
-| Filesystem | SPIFFS / LittleFS / FAT の解析とファイル取り出し |
+| Filesystem | SPIFFS / LittleFS / FAT の解析・ファイル取り出し・再構築 |
 | Binary | 形式自動判定、Hex View 用データ供給、Binary Diff |
 | Web | 上記すべてを GUI から利用できるリファレンス実装 |
 
@@ -801,13 +801,23 @@ analyzeBinaryAs(id, data, ctx)  // -> AnalysisResult     形式を明示指定
 
 ### 9.3 confidence の基準
 
-| 値 | 意味 |
-| --- | --- |
-| 1.0 | magic とチェックサム／MD5 の両方が一致 |
-| 0.8 | magic 一致、構造も整合 |
-| 0.5 | magic は一致するが一部不整合（破損の可能性） |
-| 0.3 | ヒューリスティックのみ（ヒントに基づく推定） |
-| 0.0 | 不一致 |
+confidence は**証拠**の主張である。見つかったもののうち、その領域が本当にその形式でなければ成り立たないものがどれだけあるか、を表す。解析が成功した確率でもなければ、どれだけ読めたかの点数でもない。
+
+| 値 | 証拠 | 該当箇所 |
+| --- | --- | --- |
+| 1.0 | magic **と** チェックサム／ハッシュの両方が検証できた | MD5 が一致するパーティションテーブル、checksum が一致するファームウェアイメージ |
+| 0.95 | その形式に固有の magic 文字列 | LittleFS（superblock が `littlefs` を持つ） |
+| 0.8〜0.9 | magic 相当の構造、またはパーティション subtype と、それに矛盾しないレイアウト | FAT（ブートセクタ、0.9）、NVS（subtype、0.9）、SPIFFS（subtype、0.85）、MD5 の無いパーティションテーブル（0.8）、otadata（subtype とサイズ完全一致、0.8） |
+| 0.5 | magic は一致するが矛盾がある。あるいは構造は合うが裏付けが無い | MD5 不一致、checksum 不一致、テーブルが `spiffs` と呼んでいない領域で見つかった SPIFFS ページ |
+| 0.3〜0.4 | 推測のみ | subtype 無しで見つかった NVS エントリ（0.4）、otadata の CRC が通っただけ／セグメントの無いイメージヘッダ（0.3） |
+| 0.0 | この形式ではない | |
+
+`CONFIDENCE_THRESHOLD` は 0.3 で、`raw` はそのわずかに下を返す。したがって推測より弱い主張は「正体不明のバイト列」に負ける。推測に対してはそれが正しい結果である。
+
+ここから出てくる帰結が2つある。
+
+- **subtype のヒントは強い証拠だが、自己証明ではない。** テーブルが `nvs` と言っているのは「誰かがそういうレイアウトを意図した」という主張であって、そこにあるバイト列についての主張ではない。NVS の形式自体には自分を名乗る要素が無く、だから NVS は 0.9 で止まり、チェックサムが検証できるものだけが 1.0 に届く。
+- **確信度を盛っても analyzer は正しくならない。間違った答えが気づかれにくくなるだけである。** dispatch は最も高い confidence を採るので、全員が 1.0 を返せば勝者は登録順で決まる。ファイルシステムを取り違えても、それらしいファイル一覧は表示されてしまう。
 
 ### 9.4 暗号化の検出
 
@@ -1231,18 +1241,24 @@ state の概形:
 
 ```js
 {
-  device: { status: 'disconnected'|'connecting'|'connected', info: DeviceInfo|null, usingStub: false },
-  flash:  { size: null, dump: null },
+  device: { status: 'disconnected'|'connecting'|'connected', info: DeviceInfo|null,
+            usingStub: false, error: null,
+            baudRate: 115200,          // ユーザーが選んだ値
+            linkBaudRate: null },      // 接続後、実際に確定した値
+  flash:  { size: null },
   partitions: { table: PartitionTable|null, source: 'device'|'file'|null },
-  selection: { kind: 'partition'|'file'|'region'|null, id: null },
-  buffers: Map<string, {name, data: Uint8Array, source, analysis: AnalysisResult|null}>,
-  nvs: { storeId: null, editing: false },
-  inspector: { tab: 'info'|'hex'|'analyze'|'edit'|'diff' },
+  partitionStates: Map<string, 'erased'|'zeroed'|'data'|'unreadable'>,
+  selection: { kind: 'partition'|'buffer'|'region'|null, id: null },
+  buffers: Map<string, {id, key, name, data: Uint8Array, source: 'device'|'file',
+                        address, partitionLabel, analysis, readAt}>,
+  inspector: { tab: 'analyze'|'hex' },
   busy: { active: false, phase: '', done: 0, total: 0, cancel: null },
-  locale: 'ja',
   log: LogEntry[],
+  dialog: null,
 }
 ```
+
+`readAt` と `key` の 2 つは、フラッシュのコピーがデバイスの再起動と同時に古くなることから来ている。`readAt` は inspector が表示する値で、「もう一度読む」ボタンに意味を与える。`key` は領域の同一性を表し、同じ領域を読み直したときに古いバッファを**置き換える**（隣にもう 1 つ増やすのではなく）ために使う。
 
 `Uint8Array` は state に置くが、**変更通知は参照比較で行う**（ディープコピーしない）。最大 16MB のバッファを扱うため、コピーは明示的な操作のみとする。
 
@@ -1257,7 +1273,7 @@ state の概形:
 ├─────────────────┬─────────────────────────────────┤
 │ Flash Map       │ Inspector                       │
 │                 │ ┌─────────────────────────────┐ │
-│  Bootloader     │ │ Info │ Hex │ Analyze │ Edit │ │
+│  Bootloader     │ │ Analyze │ Hex                │ │
 │  Partition Tbl  │ ├─────────────────────────────┤ │
 │  NVS            │ │                             │ │
 │  OTA Data       │ │                             │ │
@@ -1273,16 +1289,20 @@ state の概形:
 
 - 左ペインには Flash Map のほか、ファイルから読み込んだバッファの一覧も表示する（「Files」セクション）。デバイス由来とファイル由来を同じ Inspector で扱う。
 - 画面幅 900px 未満では 1 カラムに折り返し、Flash Map と Inspector をタブ切り替えにする。
+- **切断時にデバイス由来のデータをすべて捨てる。** ファイル由来のバッファは残す。前のボードのパーティションが画面に残っていると、再接続後はそれが現在のボードのものとして読まれてしまい、画面上に両者を区別する手がかりが無い。
 
 ### 16.4 Inspector タブ
 
 | タブ | 内容 |
 | --- | --- |
-| Info | 選択対象のメタ情報（offset / size / type / subtype / label / end address / encrypted） |
+| Analyze | 選択対象について分かることすべて。メタ情報（offset / size / type / subtype / label / end address / encrypted）、デバイスから最後に読んだ時刻と再読み込みボタン、`analyzeBinary` の結果と形式ごとの専用ビュー（Partition テーブル、Image セグメント一覧、NVS ツリー、ファイルツリー）、およびその対象に対して実行できる操作 |
 | Hex | Hex Viewer。解析済み region をハイライト |
-| Analyze | `analyzeBinary` の結果。形式ごとの専用ビュー（Partition テーブル、Image セグメント一覧、NVS ツリー、SPIFFS ファイルツリー）。形式を手動で切り替えるセレクタを付ける |
-| Edit | NVS Editor など、形式固有の編集 UI |
-| Diff | 2 つのバッファを選択して比較 |
+
+タブは 2 つで、どちらも「いま選んでいるこの領域は何か」という同じ問いに答える。一方は文章で、もう一方はバイト列で答える。
+
+**編集はタブではない。** NVS のエントリもファイルも、それを表示しているツリーの中で編集する。値と、その値が属するものとが 2 か所に分かれることがない。
+
+バイト比較のタブは実装したうえで撤去した。他のタブが対象を 1 つ取るのに対しこれだけ 2 つ取っており、**なぜそこにあるのか・何を比べているのかを画面上の何も説明していなかった**。`diffBinary` は API に残る。
 
 ### 16.5 Hex Viewer（`esp-hex-viewer`）
 
@@ -1425,7 +1445,29 @@ Read Original → Store Backup → Modify → Preview Diff → Write → Verify
 
 ## 18. 未対応領域の扱い
 
-- 解析できない領域・パーティションも一覧から**消さない**。`Unknown / Raw` として表示する。
+「解析できない」は 1 つの状態ではなく 3 つあり、それらを分けるのはたいていパーティションテーブルである。
+
+| 状態 | 分かっていること | 表示 |
+| --- | --- | --- |
+| 解析済み | analyzer が読めた | 解析結果と confidence（[9.3](#93-confidence-の基準)） |
+| 名前は分かるが未解析 | subtype が正体を示しているが、パーサが無い | 形式名を含む `analyze.notImplemented` の警告を、raw 表示の上に出す |
+| 不明 | 手がかりが無い | `Unknown / Raw` |
+
+真ん中の状態を分けておくことに意味がある。「これはコアダンプであり、コアダンプは読まない」と「これが何か分からない」は別の答えであって、同一に扱うのはデバイスが既に教えてくれた情報を捨てることになる。対応表は `src/format/registry.js` の `UNIMPLEMENTED_SUBTYPE_FORMATS`。
+
+subtype のヒントは、中身がある領域に対してのみ信用する。空のパーティションは「未対応形式」ではなく「消去済み」として報告する。そうしないと、一度も panic していないボードの `coredump` パーティションが、存在しないデータについての未対応警告を抱えることになる。
+
+現在この真ん中の状態にある data サブタイプ:
+
+| サブタイプ | 形式 | 状況 |
+| --- | --- | --- |
+| `coredump` (0x03) | ESP-IDF コアダンプ | 未実装。予定も未定（[23](#23-未決事項)） |
+| `phy` (0x01) | PHY 初期化データ | 未実装。予定も未定 |
+| `nvs_keys` (0x04) | NVS 暗号化鍵 | **実装しない。** eFuse の鍵が無ければ中身は暗号文であり、原理的に見せられるものが存在しない（[19](#19-暗号化領域)） |
+
+3 つのどの状態であっても:
+
+- 解析できない領域・パーティションも一覧から**消さない**。
 - Raw に対しても Hex View / Export / Replace / Diff は利用可能とする。
 - Partition Table に定義のない Flash 領域は `Unallocated` として Flash Map に表示し、Read / Export を可能にする。
 
@@ -1450,7 +1492,13 @@ Read Original → Store Backup → Modify → Preview Diff → Write → Verify
 
 ### 20.2 fixture
 
-**fixture はコードで生成する。** バイナリをコミットするより、その fixture が何を意図しているかが読めることを優先する。`test/helpers.js` にビルダーを置く。
+fixture の出どころは 2 つあり、両者は対等ではない。
+
+**実機からのキャプチャ** — `test/fixtures/hardware/<チップ>/` に置く。[`tools/fixture-device/`](../tools/fixture-device/README.ja.md) が既知の内容をボードに書き込み、その Flash を吸い出したものである。このリポジトリで**テスト対象のコードが生成していない唯一の fixture** であり、パーサとビルダーが同じ間違いで一致している状態を捕まえられるのはこれだけである。
+
+この区別は用心ではなく実測である。**9 件の不具合が、全部通っているテストスイートを素通りしていた**。実機キャプチャに置き換えた週にまとめて捕まった。パーティション magic のバイト順（parse と build が同じ誤った定数を共有していた）、otadata の CRC（fixture 側も同じ誤った式で計算していた）、SPIFFS のページフラグの読み違い。生成した fixture が問うのは「コードは自分自身と一致しているか」であり、それは常に yes になる。
+
+**`test/helpers.js` のビルダー**は、実機が返してこないものを担当する。境界値、破損データ、特定の分岐を通すためのレイアウト。*そちらについては*バイナリをコミットするより意図が読めるほうがよく、ビルダーはそのために残っている。
 
 | 関数 | 生成するもの |
 | --- | --- |
@@ -1461,7 +1509,7 @@ Read Original → Store Backup → Modify → Preview Diff → Write → Verify
 | `flashImage(options)` | bootloader + テーブル + アプリを配置した Flash 全体像 |
 | `pathologicalInputs()` | 空 / 1 バイト / 全 0x00 / 全 0xFF / ランダム |
 
-実機から採取したバイナリを追加する場合のみ `test/fixtures/` にコミットし、**MAC アドレス・Wi-Fi 認証情報・証明書・鍵を必ず匿名化する。**
+実機から採取したバイナリは `test/fixtures/` にのみ置き、**MAC アドレス・Wi-Fi 認証情報・証明書・鍵は決してコミットしない。** プロビジョニング用スケッチは固定の定数しか書き込まず、MAC アドレスは eFuse にあってキャプチャ対象のどの領域にも含まれない。
 
 ### 20.3 必須テストケース
 
@@ -1472,12 +1520,15 @@ Read Original → Store Backup → Modify → Preview Diff → Write → Verify
 | Protocol | MockTransport 経由での SYNC / チップ検出 / read / write / タイムアウト / リトライ |
 | Partition | parse → build → parse のラウンドトリップでバイト一致 |
 | NVS | parse → build → parse で全エントリ一致。編集後のラウンドトリップ。容量超過で例外 |
+| Filesystem | 実機キャプチャに対する解析。再構築については、パーサを経由しない第2の経路で検証する — SPIFFS はインデックス経由の読み戻し、LittleFS は tail チェーンの走査、FAT は wear levelling 状態の引き継ぎ（[12.2](#122-再構築)） |
 | Image | checksum / SHA-256 検証 |
 | Diff | 差分なし / 全差分 / 長さ違い / minGap の境界 |
 | Flash | 範囲外・非アライン入力で例外が飛ぶこと |
 | i18n | `en.json` に対する各ロケールのキー欠落検出、`navigator.languages` の各パターンでの判定 |
 
 **ラウンドトリップテストは NVS と Partition Table で必須とする。** 書き戻し機能の正しさはここでしか担保できない。
+
+同時に、ラウンドトリップだけでは**足りない**。1 つの形式理解から書かれたパーサとビルダーは、その理解が正しくてもいなくても完璧に往復する。したがって書き戻せる形式にはすべて、パーサを経由しない第2の検査を用意する（[12.2](#122-再構築)）。
 
 ### 20.4 CI
 
@@ -1527,7 +1578,7 @@ GitHub Actions で以下を実行する。ローカルでは `npm run check` が
 - [x] ビルドスクリプトと GitHub Pages 用の site 組み立て
 - [x] CI（テスト / 型検査 / レイヤ検証 / ロケール検証）
 - [x] npm 公開（[v0.1.0](https://www.npmjs.com/package/esp-flashjs)、2026-08-16）
-- [ ] 実機での検証
+- [x] 実機での検証（ESP32 / ESP32-S3 / ESP32-P4）
 
 ### Phase 2 — NVS（実装済み）
 
@@ -1541,9 +1592,6 @@ GitHub Actions で以下を実行する。ローカルでは `npm run check` が
 
 ### Phase 3 — Filesystem と解析の拡充（実装済み）
 
-- [x] ESP Firmware Image 解析
-- [x] otadata 解析
-- [x] Binary Diff
 - [x] SPIFFS 読み取り解析・ファイル抽出
 - [x] LittleFS 解析・ファイル抽出（前倒し。同じ実機キャプチャで3形式とも取れるため、
       フェーズを分けて別々に解析するより大幅に安い）
@@ -1553,13 +1601,15 @@ GitHub Actions で以下を実行する。ローカルでは `npm run check` が
 - [x] 暗号化検出の精度向上 — エントロピー単独では暗号化と断定しない。eFuse とパーティションテーブルで判断（[9.4](#94-暗号化の検出)）
 - [ ] ~~鍵を渡しての復号~~ — 実装可能だが意図的に見送り。理由は [9.5](#95-復号-意図的に実装しない)
 
-### Phase 4 — 拡張
+### Phase 4 — 拡張（注記のあるもの以外は実装済み）
 
 - [x] SPIFFS / LittleFS / FAT の再構築（[12.2](#122-再構築)）
 - [x] Analyzer Plugin API の公開・ドキュメント化（[analyzers.ja.md](./analyzers.ja.md)。例は `test/analyzer-plugin.test.js` で実行しているので古くならない）
 - [x] NodeSerialTransport / WebUSBTransport — どちらも同梱しない判断。拡張点は `Transport` インターフェースであり、[transports.ja.md](./transports.ja.md) に動作する Node 実装例つきで文書化した。Node 版の同梱は native 依存を意味し、依存ゼロの保証を全利用者から奪う
-- [ ] ESP8266 サポートの再検討
 - [x] パッケージ分割の判断（`@esp-flashjs/*`）— 分割しないと決定
+- [ ] ESP8266 サポートの再検討
+- [ ] 残る data サブタイプ（`coredump` / `phy`）の解析 — 未着手であり、予定も立てていない。
+      それまでの表示は [18](#18-未対応領域の扱い) の通りで、`nvs_keys` は恒久的にここに留まる
 
 ---
 
@@ -1569,8 +1619,9 @@ GitHub Actions で以下を実行する。ローカルでは `npm run check` が
 | --- | --- | --- |
 | 1 | **実機検証** | ESP32 / ESP32-S3 / ESP32-P4 について解決。各機を消去・書き込み・吸い出しし、そのキャプチャをパーサのテスト fixture としている。reset タイミングと READ_FLASH のフロー制御、および MockTransport では捕まえられなかったパーサのバグ5件がこれで確定した。他のチップは未検証のままで、README にもそう書いてある |
 | 2 | ~~パッケージ分割の是非と時期~~ | **分割しない。** 解析だけの利用者には `esp-flashjs/core` のサブパスで既に小さい方（minified で 108KB に対し 80KB）が届いており、バージョン管理と公開を二重化する理由がない。サブパス export と `sideEffects: false` で得られる以上のものは無く、リリースごとに調整作業が増えるだけ。層を実際に守っているのは `lint:layers` が強制するディレクトリ境界のほう |
-| 3 | LittleFS の実装方針 | 自前実装か、既存 JS 実装の移植か |
+| 3 | ~~LittleFS の実装方針~~ | **自前実装**（`src/format/fs/littlefs.js`）。移植は、読み取り方向しか要らないもののために C のコード構造を JavaScript に持ち込むことを意味する。実際に時間を食った2点 — タグが**デコード後**の前タグと XOR されること、および forward-CRC タグの存在 — は移植したところで見通しが良くなる類のものではなかった |
 | 4 | 追加言語 | ko / de / fr / es / pt-BR / ru。翻訳は JSON を 1 つ足すだけで済む |
+| 5 | **コアダンプの解析** | 未定。筋は悪くない。ESP-IDF はダンプをヘッダとチェックサムで包んで書くため、NVS と違って subtype からの推測ではなく**中身自身から**識別できる（[9.3](#93-confidence-の基準)）。足りないのは fixture のほうで、キャプチャ済みの3台とも `coredump` パーティションに中身が無い。自前生成したイメージに対してパーサを書いてはいけない理由は [20.2](#202-fixture) にある |
 
 **解決済み:**
 

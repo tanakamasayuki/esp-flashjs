@@ -68,7 +68,7 @@ ESP32's flash structure visually from a browser.
 | Partition | Partition table parsing and generation, per-partition operations |
 | Image | ESP firmware image parsing |
 | NVS | Parsing, editing, rebuilding, diffing |
-| Filesystem | SPIFFS, LittleFS and FAT parsing and extraction |
+| Filesystem | SPIFFS, LittleFS and FAT: parsing, extraction and rebuilding |
 | Binary | Format detection, data for hex views, binary diff |
 | Web | A reference implementation exposing all of the above through a GUI |
 
@@ -921,13 +921,33 @@ analyzeBinaryAs(id, data, ctx)  // -> AnalysisResult, format specified explicitl
 
 ### 9.3 Confidence scale
 
-| Value | Meaning |
-| --- | --- |
-| 1.0 | Magic and checksum/MD5 both match |
-| 0.8 | Magic matches and the structure is consistent |
-| 0.5 | Magic matches but something is inconsistent (possible corruption) |
-| 0.3 | Heuristic only (inferred from a hint) |
-| 0.0 | No match |
+Confidence is a claim about **evidence** — how much of what was found could
+only be true if the region really is this format. It is not a probability that
+the parse worked, and not a score for how much was read.
+
+| Value | Evidence | Where it happens |
+| --- | --- | --- |
+| 1.0 | A magic *and* a checksum or hash both verify | Partition table with a matching MD5; firmware image with a matching checksum |
+| 0.95 | A magic string unique to the format | LittleFS, whose superblock carries `littlefs` |
+| 0.8–0.9 | A magic-like structure, or a partition subtype backed by a layout that agrees with it | FAT (boot sector, 0.9); NVS (subtype, 0.9); SPIFFS (subtype, 0.85); partition table with no MD5 (0.8); otadata (subtype and exact size, 0.8) |
+| 0.5 | A magic matches but something contradicts it — or the structure fits with nothing to corroborate it | MD5 mismatch; checksum mismatch; SPIFFS pages in a partition the table does not call `spiffs` |
+| 0.3–0.4 | Inference only | NVS entries with no subtype (0.4); a valid otadata CRC, or an image header with no segments (0.3) |
+| 0.0 | Not this format | |
+
+`CONFIDENCE_THRESHOLD` is 0.3 and `raw` reports just under it, so anything
+weaker than a guess loses to "unknown bytes", which is the right answer for a
+guess.
+
+Two consequences worth stating:
+
+- **A subtype hint is strong evidence, but not self-proving.** The table saying
+  `nvs` is a statement about the layout someone intended, not about the bytes
+  that are there. Nothing in the NVS format identifies itself, which is why NVS
+  stops at 0.9 while a verified checksum reaches 1.0.
+- **Inflating a value does not make an analyzer right; it makes a wrong answer
+  harder to notice.** Dispatch takes the highest confidence, so if everything
+  claimed 1.0 the winner would be registration order. A misidentified
+  filesystem still renders a plausible-looking file list.
 
 ### 9.4 Detecting encryption
 
@@ -1460,16 +1480,27 @@ Shape of the state:
 
 ```js
 {
-  device: { status: 'disconnected'|'connecting'|'connected', info: DeviceInfo|null, usingStub: false, error: null },
+  device: { status: 'disconnected'|'connecting'|'connected', info: DeviceInfo|null,
+            usingStub: false, error: null,
+            baudRate: 115200,          // what the user selected
+            linkBaudRate: null },      // what the link settled on, once connected
   flash:  { size: null },
   partitions: { table: PartitionTable|null, source: 'device'|'file'|null },
-  selection: { kind: 'partition'|'buffer'|'gap'|null, id: null },
-  buffers: Map<string, {id, name, data: Uint8Array, source, address, partitionLabel, analysis}>,
-  inspector: { tab: 'info'|'hex'|'analyze'|'edit'|'diff' },
+  partitionStates: Map<string, 'erased'|'zeroed'|'data'|'unreadable'>,
+  selection: { kind: 'partition'|'buffer'|'region'|null, id: null },
+  buffers: Map<string, {id, key, name, data: Uint8Array, source: 'device'|'file',
+                        address, partitionLabel, analysis, readAt}>,
+  inspector: { tab: 'analyze'|'hex' },
   busy: { active: false, phase: '', done: 0, total: 0, cancel: null },
   log: LogEntry[],
+  dialog: null,
 }
 ```
+
+Two fields exist because a copy of flash goes stale the moment the device runs
+again. `readAt` is what the inspector shows and what makes "read it again"
+worth offering; `key` identifies the region so that re-reading it replaces the
+old buffer instead of accumulating a second one beside it.
 
 `Uint8Array`s live in the state, but **change notification is by reference
 comparison** — nothing is deep-copied. Buffers reach 16 MB, so copying happens
@@ -1486,7 +1517,7 @@ only as an explicit operation.
 ├─────────────────┬─────────────────────────────────┤
 │ Flash Map       │ Inspector                       │
 │                 │ ┌─────────────────────────────┐ │
-│  Bootloader     │ │ Info │ Hex │ Analyze │ Edit │ │
+│  Bootloader     │ │ Analyze │ Hex                │ │
 │  Partition Tbl  │ ├─────────────────────────────┤ │
 │  NVS            │ │                             │ │
 │  OTA Data       │ │                             │ │
@@ -1504,16 +1535,26 @@ only as an explicit operation.
   "Files" section). Device-sourced and file-sourced data share one Inspector.
 - Below 900px the layout collapses to one column, with a tab strip switching
   between the flash map and the Inspector.
+- **Disconnecting drops everything read from the device.** File-sourced buffers
+  stay. Partitions left on screen from the previous board read as the current
+  board's after a reconnect, and nothing on screen distinguishes them.
 
 ### 16.4 Inspector tabs
 
 | Tab | Contents |
 | --- | --- |
-| Info | Metadata for the selection (offset / size / type / subtype / label / end address / encrypted) |
+| Analyze | Everything known about the selection: metadata (offset / size / type / subtype / label / end address / encrypted), when it was last read from the device and a button to read it again, the `analyzeBinary` result with a per-format view (partition table, image segment list, NVS tree, filesystem tree), and the operations that apply to it |
 | Hex | The hex viewer, highlighting analyzed regions |
-| Analyze | The `analyzeBinary` result, with a per-format view (partition table, image segment list, NVS tree, SPIFFS file tree) and a selector to override the format |
-| Edit | Format-specific editing UI, such as the NVS editor |
-| Diff | Pick two buffers and compare them |
+
+Two tabs, both answering *what is this region I selected?* — one in prose and
+one in bytes.
+
+**Editing is not a tab.** An NVS entry or a file is edited in the tree that
+displays it, so a value and the thing it belongs to are never in two places.
+
+A byte-comparison tab existed and was removed. It took two subjects where every
+other tab took one, so nothing on screen explained why it was there or what it
+was comparing. `diffBinary` remains in the API.
 
 ### 16.5 Hex viewer (`esp-hex-viewer`)
 
@@ -1688,8 +1729,37 @@ reported as a clear error in both the log and a dialog.
 
 ## 18. Handling unsupported regions
 
+"Cannot be parsed" is not one state but three, and the partition table is
+usually what separates them:
+
+| State | What is known | How it is reported |
+| --- | --- | --- |
+| Parsed | An analyzer read it | The analysis, with a confidence ([9.3](#93-confidence-scale)) |
+| Named but unparsed | The subtype says what it is; no parser exists | An `analyze.notImplemented` warning naming the format, over a raw view |
+| Unknown | Nothing to go on | `Unknown / Raw` |
+
+The middle state is the one worth keeping separate. "This is a core dump, and
+core dumps are not read" is a different answer from "no idea what this is", and
+reporting them the same way discards what the device already told us. The
+mapping is `UNIMPLEMENTED_SUBTYPE_FORMATS` in `src/format/registry.js`.
+
+A subtype hint is only trusted for a region that holds something. A blank
+partition is reported as erased, not as an unimplemented format — otherwise a
+`coredump` partition on a board that has never panicked would carry a warning
+about missing support for data that is not there.
+
+The data subtypes in that middle state today:
+
+| Subtype | Format | Status |
+| --- | --- | --- |
+| `coredump` (0x03) | ESP-IDF core dump | Not implemented, and not scheduled ([23](#23-open-questions)) |
+| `phy` (0x01) | PHY init data | Not implemented, and not scheduled |
+| `nvs_keys` (0x04) | NVS encryption keys | **Will not be implemented.** Without the eFuse key the contents are ciphertext, so there is nothing readable to show even in principle ([19](#19-encrypted-regions)) |
+
+Whichever of the three a region is in:
+
 - A region or partition that cannot be parsed is **never removed** from the
-  list. It is shown as `Unknown / Raw`.
+  list.
 - Hex view, export, replace and diff all remain available for raw data.
 - Flash space not covered by the partition table appears in the flash map as
   `Unallocated` and can be read and exported.
@@ -1720,8 +1790,25 @@ behaviour is covered by manual testing.
 
 ### 20.2 Fixtures
 
-**Fixtures are generated in code.** Readable intent beats a committed binary.
-The builders live in `test/helpers.js`.
+Fixtures come from two places, and they are not equal.
+
+**Captures from real hardware** — `test/fixtures/hardware/<chip>/`, produced by
+[`tools/fixture-device/`](../tools/fixture-device/README.md), which provisions
+a board with known contents and dumps its flash. These are the only fixtures in
+the repository that were *not* produced by the code under test, which makes
+them the only ones that can catch a parser and a builder agreeing on the same
+mistake.
+
+That distinction is not a precaution, it is a finding. **Nine faults survived a
+complete, passing test suite** and were caught the week real captures replaced
+the generated ones: a partition magic byte order where parse and build shared
+one wrong constant, an otadata CRC where the fixture used the same wrong
+formula, SPIFFS page flags read the wrong way round. A generated fixture asks
+whether the code agrees with itself, and it always does.
+
+**Builders in `test/helpers.js`** cover what no device would hand you:
+boundaries, damage, and layouts chosen to drive one branch. Readable intent
+beats a committed binary *there*, which is what they remain for.
 
 | Function | Produces |
 | --- | --- |
@@ -1733,7 +1820,9 @@ The builders live in `test/helpers.js`.
 | `pathologicalInputs()` | Empty / one byte / all 0x00 / all 0xFF / random |
 
 Binaries captured from real hardware go under `test/fixtures/` only, and
-**MAC addresses, Wi-Fi credentials, certificates and keys must be anonymized.**
+**MAC addresses, Wi-Fi credentials, certificates and keys must never be
+committed.** The provisioning sketch writes fixed constants and nothing else,
+and the MAC address lives in eFuse, outside every captured region.
 
 ### 20.3 Required test cases
 
@@ -1744,6 +1833,7 @@ Binaries captured from real hardware go under `test/fixtures/` only, and
 | Protocol | Through MockTransport: SYNC, chip detection, read, write, timeout, retry |
 | Partition | parse → build → parse round trip, byte for byte |
 | NVS | parse → build → parse with every entry preserved; round trip after editing; capacity overflow raises |
+| Filesystems | Parse the hardware captures; rebuild and verify through a second path that does not go through the parser — index-order read for SPIFFS, tail-chain traversal for LittleFS, wear-levelling carry-over for FAT ([12.2](#122-rebuilding)) |
 | Image | Checksum and SHA-256 verification |
 | Diff | No differences / all different / differing lengths / the minGap boundary |
 | Flash | Out-of-range and misaligned input raise |
@@ -1751,6 +1841,11 @@ Binaries captured from real hardware go under `test/fixtures/` only, and
 
 **Round-trip tests are mandatory for NVS and the partition table.** Nothing else
 establishes that write-back is correct.
+
+They are also **not sufficient**. A parser and a builder written from one
+reading of a format round-trip perfectly whether or not that reading was right,
+so every format that can be written back carries a second check that does not
+go through the parser ([12.2](#122-rebuilding)).
 
 ### 20.4 CI
 
@@ -1826,13 +1921,16 @@ See [publishing.md](./publishing.md) for the full account. In brief:
 - [x] Refining encryption detection — entropy no longer claims encryption on its own; the chip's eFuse and the partition table decide ([9.4](#94-detecting-encryption))
 - [ ] ~~Decrypting with a supplied key~~ — feasible, deliberately deferred; the reasoning is in [9.5](#95-decryption-deliberately-not-implemented)
 
-### Phase 4 — Extensions
+### Phase 4 — Extensions (implemented, except where noted)
 
 - [x] SPIFFS / LittleFS / FAT rebuilding ([12.2](#122-rebuilding))
 - [x] Publishing and documenting the analyzer plugin API ([analyzers.md](./analyzers.md); its example is executed by `test/analyzer-plugin.test.js`, so it cannot drift)
 - [x] NodeSerialTransport / WebUSBTransport — decided against shipping either; the `Transport` interface is the extension point and [transports.md](./transports.md) documents it with a working Node example. A Node transport would mean a native dependency, which costs every consumer the zero-dependency guarantee
-- [ ] Reconsidering ESP8266 support
 - [x] Deciding on package splitting (`@esp-flashjs/*`) — decided against
+- [ ] Reconsidering ESP8266 support
+- [ ] Parsing the remaining data subtypes (`coredump`, `phy`) — not started and
+      not scheduled. [18](#18-handling-unsupported-regions) describes how they
+      are reported meanwhile, and `nvs_keys` is there for good
 
 ---
 
@@ -1842,8 +1940,9 @@ See [publishing.md](./publishing.md) for the full account. In brief:
 | --- | --- | --- |
 | 1 | **Hardware verification** | Resolved for ESP32, ESP32-S3 and ESP32-P4: each was erased, provisioned and captured, and those captures are the fixtures the parsers are tested against. It settled reset timing, READ_FLASH flow control and five parser bugs that MockTransport could not have caught. The other chips remain unverified and the README says so |
 | 2 | ~~Whether and when to split packages~~ | **No.** The `esp-flashjs/core` subpath already gives an analysis-only consumer the smaller bundle — 80 KB against 108 KB minified — without a second package to version, publish and keep in step. Splitting would buy nothing a subpath export and `sideEffects: false` do not already buy, and would cost every release a coordination step. The directory boundaries, enforced by `lint:layers`, are what actually keeps the layering honest |
-| 3 | How to implement LittleFS | Write it, or port an existing JS implementation |
+| 3 | ~~How to implement LittleFS~~ | **Written from scratch**, in `src/format/fs/littlefs.js`. Porting would have meant carrying a C codebase's structure into JavaScript for a reader that needs one direction of it; the two details that actually cost time — tags chained against the *decoded* previous tag, and the forward-CRC tag — were not going to be any clearer through a port |
 | 4 | Additional languages | ko / de / fr / es / pt-BR / ru. Each is one JSON file |
+| 5 | **Parsing core dumps** | Undecided. On the merits it is a good candidate: ESP-IDF wraps the dump in a header and a checksum, so unlike NVS it could be recognised from its own contents instead of inferred from the subtype ([9.3](#93-confidence-scale)). What is missing is a fixture. None of the three captured boards has a populated `coredump` partition, and [20.2](#202-fixtures) is the reason not to write the parser against a self-generated one |
 
 **Settled:**
 

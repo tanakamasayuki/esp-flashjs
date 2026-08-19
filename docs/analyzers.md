@@ -149,14 +149,20 @@ is the true answer.
 | Value | What it should mean |
 | --- | --- |
 | 1.0 | A magic *and* a checksum or hash both verify |
-| 0.8–0.9 | A magic matches and the structure is self-consistent |
-| 0.5 | A magic matches but something contradicts it |
-| 0.3 | Inference only — a partition subtype, a plausible header |
+| 0.8–0.95 | A magic matches, or the partition subtype says so and the structure agrees |
+| 0.5 | A magic matches but something contradicts it, or the structure fits with nothing to corroborate it |
+| 0.3–0.4 | Inference only — a plausible header and nothing else |
 | 0.0 | Not mine |
 
 Below 0.3 the `raw` analyzer wins, which is the right outcome for a guess.
 Inflating confidence to make your analyzer win does not make it right; it makes
 a wrong answer harder to notice.
+
+The bundled analyzers put a partition subtype in the 0.8–0.9 band rather than
+treating it as a bare guess: the table is a strong statement about what the
+region is meant to hold. It is still not proof about the bytes, which is why
+nothing identified by subtype alone reaches 1.0 — `nvs` stops at 0.9 because
+the NVS format contains nothing that names itself.
 
 ### Report problems, do not throw them
 

@@ -1,6 +1,8 @@
 # Changelog / 変更履歴
 
 ## Unreleased
+- (EN) Documentation corrected against the shipped code. The spec still described a fixture policy the project reversed ("fixtures are generated in code"), an inspector with five tabs where there are two, a store shape from before the reconnect and staleness work, and a confidence scale that put a partition subtype at 0.3 when every shipped analyzer scores it 0.8–0.9. What happens to a region the partition table names but no parser reads — `coredump`, `phy`, and `nvs_keys`, which will never be read — was not written down anywhere; it is now [18](./docs/spec.md#18-handling-unsupported-regions).
+- (JA) ドキュメントを実装に合わせて修正。仕様書には、プロジェクトが既に覆した fixture 方針（「fixture はコードで生成する」）、実際は2つしかない inspector のタブが5つ、再接続とデータ鮮度の対応より前の store 構造、および subtype を 0.3 とする confidence 基準（同梱の analyzer はすべて 0.8〜0.9 を返す）が残っていた。パーティションテーブルが名前を教えているがパーサが無い領域の扱い（`coredump` / `phy`、および恒久的に読まない `nvs_keys`）はどこにも書かれていなかったため、[18](./docs/spec.ja.md#18-未対応領域の扱い) として明文化した。
 
 ## 1.0.0
 - (EN) First release. A dependency-free, build-step-free JavaScript library for reading, analysing, editing and writing ESP32 flash — the serial bootloader protocol, the flasher stub, partition tables, firmware images, otadata, NVS, SPIFFS, LittleFS and FAT — plus a Web Serial reference application. Runs from a `<script type="module">` or from Node; `esp-flashjs/core` is the parsers alone, with no serial code.
