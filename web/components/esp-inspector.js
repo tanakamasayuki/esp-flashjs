@@ -69,6 +69,8 @@ const TEMPLATE = `
   .sep { width: 1px; background: var(--border); margin: 0 4px; }
   .summary { margin: 0 0 10px; font-weight: 500; }
   .note { margin: 10px 0 0; color: var(--fg-muted); font-size: 12px; width: 100%; }
+  .freshness { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: -4px 0 12px; }
+  .freshness .note { margin: 0; width: auto; }
   .actions.danger-group { border-top: 1px solid var(--border); padding-top: 12px; margin-top: 14px; }
   ul.issues { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
   ul.issues li { padding: 6px 8px; border-radius: 4px; border-left: 3px solid var(--warn);
@@ -128,7 +130,16 @@ export class EspInspector extends HTMLElement {
 
   /**
    * Resolves the selection into the bytes and metadata to display.
-   * @returns {{title: string, data: Uint8Array|null, address: number, size: number, analysis: import('../esp-flashjs.js').AnalysisResult|null, partition: import('../esp-flashjs.js').Partition|null}|null}
+   *
+   * @returns {{
+   *   title: string,
+   *   data: Uint8Array|null,
+   *   address: number,
+   *   size: number,
+   *   analysis: import('../esp-flashjs.js').AnalysisResult|null,
+   *   partition: import('../esp-flashjs.js').Partition|null,
+   *   readAt: number|null,
+   * }|null}
    */
   _target() {
     const state = store.getState();
@@ -144,6 +155,7 @@ export class EspInspector extends HTMLElement {
         address: buffer.address ?? 0,
         size: buffer.data.length,
         analysis: buffer.analysis,
+        readAt: buffer.source === 'device' ? buffer.readAt : null,
         // A buffer read from a partition still belongs to it. Reading one
         // selects the buffer rather than the partition, so forgetting this
         // made every editor go read-only the moment its data arrived — and
@@ -174,6 +186,7 @@ export class EspInspector extends HTMLElement {
         address,
         size,
         analysis: buffer?.analysis ?? null,
+        readAt: buffer?.readAt ?? null,
         partition: null,
       };
     }
@@ -193,6 +206,7 @@ export class EspInspector extends HTMLElement {
       address: partition.offset,
       size: partition.size,
       analysis: buffer?.analysis ?? null,
+      readAt: buffer?.readAt ?? null,
       partition,
     };
   }
@@ -287,11 +301,8 @@ export class EspInspector extends HTMLElement {
 
     const wrap = document.createElement('div');
     wrap.className = 'actions';
+    // Reading lives at the top now, beside the heading and the timestamp.
     wrap.append(
-      action(t('action.readFromDevice'), !canRead, () => {
-        if (target.partition) void readPartition(target.partition);
-        else void readFlashRegion(target.address, target.size, `${regionFileName(target)}.bin`);
-      }),
       action(t('action.exportBinary'), target.data === null, () =>
         exportBytes(/** @type {Uint8Array} */ (target.data), `${regionFileName(target)}.bin`),
       ),
@@ -330,6 +341,49 @@ export class EspInspector extends HTMLElement {
   }
 
   /**
+   * How old what is on screen is, and how to replace it.
+   *
+   * The read control used to sit at the bottom, below however long the
+   * analysis happened to be — past a hundred-file directory listing, in
+   * practice. It belongs next to the thing it refreshes. The timestamp belongs
+   * beside it for the same reason the whole session is discarded on connect:
+   * the device keeps running while someone reads a copy of its flash, and
+   * nothing else distinguishes a copy taken a moment ago from one taken before
+   * the application rewrote it.
+   *
+   * @param {NonNullable<ReturnType<EspInspector['_target']>>} target
+   * @returns {HTMLElement}
+   */
+  _freshness(target) {
+    const state = store.getState();
+    const canRead =
+      state.device.status === 'connected' && state.device.usingStub && !state.busy.active;
+
+    const bar = document.createElement('div');
+    bar.className = 'freshness';
+
+    const button = document.createElement('button');
+    button.className = 'act';
+    button.textContent = target.data ? t('action.reread') : t('action.readFromDevice');
+    button.disabled = !canRead;
+    button.addEventListener('click', () => {
+      if (target.partition) void readPartition(target.partition);
+      else void readFlashRegion(target.address, target.size, `${regionFileName(target)}.bin`);
+    });
+    bar.append(button);
+
+    const when = document.createElement('span');
+    when.className = 'note';
+    when.textContent = target.readAt
+      ? t('inspector.readAt', { time: new Date(target.readAt).toLocaleTimeString() })
+      : target.data
+        ? t('inspector.fromFile')
+        : t('inspector.notRead');
+    bar.append(when);
+    return bar;
+  }
+
+  /**
    * @param {HTMLElement} body
    * @param {NonNullable<ReturnType<EspInspector['_target']>>} target
    */
@@ -344,7 +398,7 @@ export class EspInspector extends HTMLElement {
 
     const heading = document.createElement('h3');
     heading.textContent = target.title;
-    container.append(heading);
+    container.append(heading, this._freshness(target));
 
     const analysis = target.analysis;
 

@@ -20,7 +20,11 @@ import {
 } from '../web/format-values.js';
 import { zip, toDosTimestamp } from '../web/zip.js';
 import { writeBackBlocker, WRITE_BACK_BLOCKERS } from '../web/write-back.js';
-import { discardOtherDeviceState } from '../web/device-session.js';
+import {
+  discardDeviceState,
+  estimateReadSeconds,
+  shouldAutoRead,
+} from '../web/device-session.js';
 import { decodeTextFile } from '../web/format-values.js';
 
 /* -------------------------------------------------------------------------- */
@@ -414,7 +418,7 @@ test('every runtime-chosen message exists in every language', () => {
 });
 
 /* -------------------------------------------------------------------------- */
-/* Changing boards                                                             */
+/* Connecting                                                                  */
 /* -------------------------------------------------------------------------- */
 
 /**
@@ -423,7 +427,6 @@ test('every runtime-chosen message exists in every language', () => {
  */
 function session(over = {}) {
   return {
-    session: { deviceId: 'aa:bb:cc:dd:ee:ff' },
     buffers: new Map([
       ['b1', { source: 'device' }],
       ['b2', { source: 'file' }],
@@ -434,14 +437,11 @@ function session(over = {}) {
   };
 }
 
-test('reconnecting to the same board keeps what was read from it', () => {
-  assert.equal(discardOtherDeviceState(session(), 'aa:bb:cc:dd:ee:ff'), null);
-});
-
-test('a different board discards its predecessor and keeps imported files', () => {
-  // The reason this matters is not tidiness. Everything left on screen keeps
-  // its write-back controls, pointed at a device the data never came from.
-  const reset = discardOtherDeviceState(session(), '11:22:33:44:55:66');
+test('connecting drops everything read from a device and keeps imported files', () => {
+  // Not tidiness. Anything left on screen keeps its write-back controls, and
+  // the device has been running since the copy was taken — so writing it back
+  // reverts whatever the application wrote in between.
+  const reset = discardDeviceState(session());
   assert.ok(reset);
   assert.deepEqual([...reset.changes.buffers.keys()], ['b2']);
   assert.equal(reset.dropped, 1);
@@ -449,41 +449,64 @@ test('a different board discards its predecessor and keeps imported files', () =
   assert.deepEqual(reset.changes.selection, { kind: null, id: null });
 });
 
-test('an identity that cannot be established is not treated as the same board', () => {
-  // "Unknown" and "same" are the two readings, and only one of them can
-  // destroy something.
-  const reset = discardOtherDeviceState(session(), null);
-  assert.ok(reset, 'a board that will not say who it is has to be assumed new');
-  assert.equal(reset.dropped, 1);
-});
-
-test('a partition table read from a file survives a change of board', () => {
-  const reset = discardOtherDeviceState(
-    session({ partitions: { table: {}, source: 'file' } }),
-    '11:22:33:44:55:66',
-  );
+test('a partition table read from a file survives a connection', () => {
+  const reset = discardDeviceState(session({ partitions: { table: {}, source: 'file' } }));
   assert.ok(reset);
   assert.deepEqual(reset.changes.partitions, { table: {}, source: 'file' });
 });
 
 test('a selection that survives the discard is left alone', () => {
-  const reset = discardOtherDeviceState(
-    session({ selection: { kind: 'buffer', id: 'b2' } }),
-    '11:22:33:44:55:66',
-  );
+  const reset = discardDeviceState(session({ selection: { kind: 'buffer', id: 'b2' } }));
   assert.ok(reset);
   assert.deepEqual(reset.changes.selection, { kind: 'buffer', id: 'b2' });
 });
 
-test('nothing to discard means nothing is reported', () => {
-  const reset = discardOtherDeviceState(
-    {
-      session: { deviceId: null },
-      buffers: new Map([['b2', { source: 'file' }]]),
-      partitions: { table: null, source: null },
-      selection: { kind: null, id: null },
-    },
-    'aa:bb:cc:dd:ee:ff',
-  );
-  assert.equal(reset, null, 'a first connection is not a change of board');
+test('a first connection has nothing to discard and says nothing', () => {
+  const reset = discardDeviceState({
+    buffers: new Map([['b2', { source: 'file' }]]),
+    partitions: { table: null, source: null },
+    selection: { kind: null, id: null },
+  });
+  assert.equal(reset, null);
 });
+
+/* -------------------------------------------------------------------------- */
+/* Reading on selection                                                        */
+/* -------------------------------------------------------------------------- */
+
+const READABLE = { size: 20 * 1024, baudRate: 460800, alreadyRead: false, canRead: true };
+
+test('a read is rationed by seconds, not by bytes', () => {
+  // The same 100 KB is two and a half seconds at 460800 and nine at 115200.
+  // A size threshold is imperceptible on one link and looks like a hang on
+  // another; the thing actually being rationed is patience.
+  assert.ok(estimateReadSeconds(100 * 1024, 460800) < 3);
+  assert.ok(estimateReadSeconds(100 * 1024, 115200) > 8);
+
+  assert.equal(shouldAutoRead({ ...READABLE, size: 100 * 1024 }), true);
+  assert.equal(shouldAutoRead({ ...READABLE, size: 100 * 1024, baudRate: 115200 }), false);
+});
+
+test('the estimate is a floor, so nothing slow slips through', () => {
+  // Ten bits per byte ignores SLIP framing, the acknowledgement after each
+  // block and the time the chip spends reading its own flash. Being wrong in
+  // this direction only ever refuses a read that would have been fine.
+  assert.equal(estimateReadSeconds(46080, 460800), 1);
+});
+
+test('nothing is read automatically that was not asked for', () => {
+  assert.equal(shouldAutoRead({ ...READABLE, canRead: false }), false, 'not connected or busy');
+  assert.equal(shouldAutoRead({ ...READABLE, alreadyRead: true }), false, 'already have it');
+  assert.equal(shouldAutoRead({ ...READABLE, size: 0 }), false);
+  assert.equal(
+    shouldAutoRead({ ...READABLE, size: 4 * 1024 * 1024 }),
+    false,
+    'browsing a table must not start a minute of I/O',
+  );
+});
+
+test('an unknown link speed refuses rather than guessing', () => {
+  assert.equal(shouldAutoRead({ ...READABLE, baudRate: null }), false);
+  assert.equal(estimateReadSeconds(1024, 0), Infinity);
+});
+

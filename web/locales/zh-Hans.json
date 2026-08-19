@@ -78,7 +78,7 @@
   "inspector.tab.analyze": "分析",
   "inspector.tab.edit": "编辑",
   "inspector.empty": "请选择一个分区或文件。",
-  "inspector.notRead": "该区域尚未读取。",
+  "inspector.notRead": "尚未从设备读取。",
   "inspector.format": "格式",
   "inspector.confidence": "置信度",
   "inspector.details": "详细信息",
@@ -283,7 +283,6 @@
   "writeback.disconnected": "未连接。要写回更改，请连接到持有该分区的设备。",
   "writeback.noStub": "flasher stub 未运行，而擦除与写入需要它。重新连接即可加载。",
   "writeback.readonly": "只读。",
-  "op.differentDevice": "已连接不同的设备。从上一台设备读取的内容（{dropped} 个缓冲区）已丢弃，因此不会误写到另一块板子。导入的文件已保留。",
   "fs.unsaved": "有 {count} 处更改尚未写入设备。",
   "fs.unsaved.hint": "它们只存在于本页面。请按写回发送，或放弃编辑丢弃；关闭标签页会丢失。",
   "fs.apply.count": "写回（{count}）",
@@ -292,5 +291,9 @@
   "fs.state.deleted": "删除",
   "nvs.unsaved": "有 {count} 处更改尚未写入设备。",
   "nvs.unsaved.hint": "它们只存在于本页面。请按写回发送，或撤销丢弃；关闭标签页会丢失。",
-  "nvs.apply.count": "写回（{count}）"
+  "nvs.apply.count": "写回（{count}）",
+  "action.reread": "从设备重新读取",
+  "inspector.readAt": "{time} 读取。此后设备一直在运行。",
+  "inspector.fromFile": "来自文件，而非从设备读取。",
+  "op.discardedReads": "连接时丢弃了从设备读取的 {dropped} 个缓冲区。闪存内容可能已变化，因此不会跨连接保留。导入的文件已保留。"
 }

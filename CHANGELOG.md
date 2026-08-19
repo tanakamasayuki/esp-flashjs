@@ -95,13 +95,23 @@ library against fixtures and a mock the library itself produced.
   bad cable. `EspLoader` now queues whole operations, and the web app refuses
   to start a second one rather than queuing a destructive write behind a long
   read.
-- **Reconnecting to a different board kept the previous one's data.** The
-  partition table, the buffers and any pending edits stayed on screen with
-  their write-back controls live, pointed at a device the data never came from
-  — one board's NVS was one click from being written into another. Device
-  identity is now checked on connect, and anything read from a board that is no
-  longer attached is discarded. Imported files are kept, and a board that
-  cannot be identified is assumed to be a new one.
+- **Reconnecting kept the previous session's data.** The partition table, the
+  buffers and any pending edits stayed on screen with their write-back controls
+  live — one board's NVS was a click away from being written into another, and
+  even on the same board the copy predated everything the application had
+  written since. **Connecting now discards everything read from a device.** The
+  objection to that is losing a backup, and it does not hold: a write downloads
+  its backup to disk before touching anything, so what is discarded is time.
+  Imported files are kept.
+- **The read control was below the analysis**, which for a filesystem meant
+  below a hundred rows of file listing. It sits beside the heading now, with
+  the time the region was read next to it — a device keeps running while
+  someone reads a copy of its flash, and nothing else on screen distinguished
+  a copy taken a moment ago from one taken before the application rewrote it.
+- **Selecting a partition reads it**, when the link can deliver it in about
+  three seconds. Rationed in seconds rather than bytes on purpose: 100 KB is
+  under three seconds at 460800 and over eight at 115200, so a size threshold
+  is imperceptible on one link and looks like a hang on another.
 - **Unsaved edits were too quiet to notice.** A small accent-coloured count
   beside a button, and a faint tint on changed rows, read as information rather
   than as "this has not reached the device". Both editors now open with a

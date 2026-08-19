@@ -25,6 +25,7 @@
  * @property {number|null} address     Flash offset it came from, when known.
  * @property {string|null} partitionLabel
  * @property {import('./esp-flashjs.js').AnalysisResult|null} analysis
+ * @property {number} readAt  Epoch milliseconds, for showing how stale it is.
  */
 
 /**
@@ -54,8 +55,6 @@
  * @property {{kind: 'partition'|'buffer'|'region'|null, id: string|null}} selection
  * @property {Map<string, Buffer>} buffers
  * @property {{tab: 'analyze'|'hex'}} inspector
- * @property {{deviceId: string|null}} session  Which device the data on screen
- *   came from, so it can be dropped when a different one is attached.
  * @property {{active: boolean, phase: string, done: number, total: number, cancel: (() => void)|null}} busy
  * @property {LogEntry[]} log
  * @property {object|null} dialog
@@ -125,7 +124,6 @@ export function initialState() {
     selection: { kind: null, id: null },
     buffers: new Map(),
     inspector: { tab: 'analyze' },
-    session: { deviceId: null },
     busy: { active: false, phase: '', done: 0, total: 0, cancel: null },
     log: [],
     dialog: null,

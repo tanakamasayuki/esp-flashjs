@@ -26,7 +26,7 @@ import {
 } from './esp-flashjs.js';
 import { store, BAUD_RATES, rememberBaudRate } from './store.js';
 import { t } from './i18n.js';
-import { discardOtherDeviceState } from './device-session.js';
+import { discardDeviceState, shouldAutoRead } from './device-session.js';
 
 /** @type {EspLoader|null} */
 let loader = null;
@@ -73,12 +73,11 @@ export async function connect() {
     flash = new EspFlash(loader);
     const info = await flash.getInfo();
 
-    // Everything on screen describes one particular board. Carrying it over to
-    // a different one is not merely untidy: the partition table, the buffers
-    // and any half-finished edits would still be offered for writing back, to
-    // a device they did not come from. The MAC is the identity — it is in
-    // eFuse, so it is available before anything else is read.
-    forgetOtherDevice(info.mac);
+    // Nothing read from a device outlives a connection. It describes one board
+    // at one moment, and both may have changed; leaving it on screen with its
+    // write-back controls live is how a copy taken before the application
+    // rewrote it gets written back over the top.
+    discardStaleReads();
 
     // Only now, with the stub running, is it worth going faster.
     const requested = store.getState().device.baudRate;
@@ -94,7 +93,6 @@ export async function connect() {
         linkBaudRate,
       },
       flash: { size: info.flashSize },
-      session: { deviceId: info.mac ?? null },
     });
     store.log('info', 'op.connected');
 
@@ -485,21 +483,13 @@ export async function writeFilesystem(partition, fs, source) {
   return true;
 }
 
-/**
- * Drops everything belonging to a board that is no longer the one attached.
- *
- * Anything read from a file stays: it was never about a particular device, and
- * throwing away a firmware image someone imported because they plugged in a
- * different board would be its own kind of surprise.
- *
- * @param {string|null|undefined} mac Identity of the device now attached.
- */
-function forgetOtherDevice(mac) {
-  const reset = discardOtherDeviceState(store.getState(), mac);
+/** Drops everything read from a device, whichever device it was. */
+function discardStaleReads() {
+  const reset = discardDeviceState(store.getState());
   if (!reset) return;
 
   store.setState(/** @type {Partial<import('./store.js').AppState>} */ (reset.changes));
-  store.log('warn', 'op.differentDevice', { dropped: reset.dropped });
+  store.log('warn', 'op.discardedReads', { dropped: reset.dropped });
 }
 
 /**
@@ -694,7 +684,21 @@ export function addBuffer({ name, data, source, address, partitionLabel, analysi
 
   // Keep the previous id when replacing, so a selection pointing at it survives.
   const id = previous?.id ?? `buf-${++bufferCounter}`;
-  buffers.set(id, { id, key, name, data, source, address, partitionLabel, analysis });
+  buffers.set(id, {
+    id,
+    key,
+    name,
+    data,
+    source,
+    address,
+    partitionLabel,
+    analysis,
+    // When, so the inspector can say how old what it is showing is. A device
+    // keeps running while someone looks at a copy of its flash, and nothing
+    // else on screen distinguishes "read a moment ago" from "read before the
+    // application rewrote it".
+    readAt: Date.now(),
+  });
   store.setState({ buffers });
   return id;
 }
@@ -729,6 +733,26 @@ export function removeBuffer(id) {
  */
 export function select(kind, id) {
   store.setState({ selection: { kind, id } });
+
+  // Looking at a partition is almost always a request to see what is in it,
+  // and for a small one the read costs less than the click that would have
+  // asked for it. Anything that would take longer than a few seconds waits to
+  // be asked: browsing a table should not start a minute of I/O.
+  if (kind !== 'partition' || !id) return;
+  const state = store.getState();
+  const partition = state.partitions.table?.partitions.find((p) => p.label === id);
+  if (!partition) return;
+
+  const wanted = shouldAutoRead({
+    size: partition.size,
+    baudRate: state.device.linkBaudRate ?? state.device.baudRate,
+    alreadyRead: [...state.buffers.values()].some(
+      (b) => b.source === 'device' && b.partitionLabel === partition.label,
+    ),
+    canRead:
+      state.device.status === 'connected' && state.device.usingStub && !state.busy.active,
+  });
+  if (wanted) void readPartition(partition);
 }
 
 /** @param {'analyze'|'hex'} tab */
