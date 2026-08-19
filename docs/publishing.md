@@ -16,7 +16,7 @@ Three channels.
 | --- | --- | --- |
 | **GitHub Pages** | People who want to try the web app | `https://tanakamasayuki.github.io/esp-flashjs/` |
 | **npm** | People integrating it into a project | `npm i esp-flashjs` |
-| **CDN** | People who want it without a build step | `https://cdn.jsdelivr.net/npm/esp-flashjs@1.0.0/dist/esp-flashjs.min.js` |
+| **CDN** | People who want it without a build step | `https://cdn.jsdelivr.net/npm/esp-flashjs@0.1.0/dist/esp-flashjs.min.js` |
 
 ### 1.1 Library distribution follows plainbind
 
@@ -288,7 +288,7 @@ Publishing to npm is all that is required; the following then works.
 ```html
 <!-- Preferred: jsDelivr -->
 <script type="module">
-  import { parsePartitionTable } from 'https://cdn.jsdelivr.net/npm/esp-flashjs@1.0.0/dist/esp-flashjs.core.min.js';
+  import { parsePartitionTable } from 'https://cdn.jsdelivr.net/npm/esp-flashjs@0.1.0/dist/esp-flashjs.core.min.js';
 </script>
 ```
 
@@ -304,7 +304,7 @@ specifiers, **plain pass-through delivery just works**. You can even bypass
 
 ```html
 <script type="module">
-  import { parseNvs } from 'https://cdn.jsdelivr.net/npm/esp-flashjs@1.0.0/src/format/nvs/parse.js';
+  import { parseNvs } from 'https://cdn.jsdelivr.net/npm/esp-flashjs@0.1.0/src/format/nvs/parse.js';
 </script>
 ```
 

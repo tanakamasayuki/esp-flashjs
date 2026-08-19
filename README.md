@@ -21,7 +21,7 @@ library has no runtime dependencies and no build step: it is plain ESM that
 browsers and Node.js run as-is.
 
 ```js
-import { parsePartitionTable } from 'https://cdn.jsdelivr.net/npm/esp-flashjs@1.0.0/dist/esp-flashjs.core.min.js';
+import { parsePartitionTable } from 'https://cdn.jsdelivr.net/npm/esp-flashjs@0.1.0/dist/esp-flashjs.core.min.js';
 
 const table = parsePartitionTable(bytes);
 console.log(table.partitions);
@@ -44,7 +44,7 @@ exist for convenience, not because anything requires them.
 
 ## Status
 
-Released as [esp-flashjs@1.0.0](https://www.npmjs.com/package/esp-flashjs).
+Released on [npm](https://www.npmjs.com/package/esp-flashjs).
 
 The protocol stack, all the formats and the reference web app are implemented:
 chip detection, the flasher stub, read/write/erase/verify/dump, partition
@@ -81,7 +81,7 @@ Or from a CDN, with no install at all:
 
 ```html
 <script type="module">
-  import { analyzeBinary } from 'https://cdn.jsdelivr.net/npm/esp-flashjs@1.0.0/dist/esp-flashjs.min.js';
+  import { analyzeBinary } from 'https://cdn.jsdelivr.net/npm/esp-flashjs@0.1.0/dist/esp-flashjs.min.js';
 </script>
 ```
 

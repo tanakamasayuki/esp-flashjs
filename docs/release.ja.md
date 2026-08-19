@@ -10,7 +10,7 @@ npm への公開は**手元のマシンから**行います。トークンをリ
 
 ## 1. 毎回のリリース（これをコピペ）
 
-`main` がクリーン（コミット漏れなし）であることを確認し、まず変更履歴を締めてから（[1.1](#11-変更履歴を締める)）:
+`main` がクリーン（コミット漏れなし）で、変更履歴が書けていることを確認してから（[1.1](#11-リリースコミットが自動で書き換えるもの)）:
 
 ```sh
 npm version patch              # 修正なら patch / 機能追加なら minor / 破壊的変更なら major
@@ -22,7 +22,7 @@ git push --follow-tags
 
 | コマンド | 自動で走るもの |
 | --- | --- |
-| `npm version <ver>` | ① `preversion` = `npm run check`（テスト・型・レイヤ・ロケール。**失敗するとバージョンは作られない**）② `scripts/sync-version.js` が `src/index.js` の `VERSION` 定数を同期 ③ コミット + `v*` タグ作成 |
+| `npm version <ver>` | ① `preversion` = `npm run check` + `scripts/check-releasable.js`（**ここで失敗すればバージョンは作られず、何も書き換わらない**）② `scripts/sync-version.js` が変更履歴を締め、全バージョン参照を書き換える（[1.1](#11-リリースコミットが自動で書き換えるもの)）③ コミット + `v*` タグ作成 |
 | `npm publish` | `prepack` = `npm run build` + `npm run types`（`dist/` と `types/` を作ってから梱包） |
 | `git push --follow-tags` | コミットとタグを push。Pages が自動デプロイ。**release.yml は発火しない**（手動実行専用の予備） |
 
@@ -38,30 +38,31 @@ git push --follow-tags
 
 ---
 
-## 1.1. 変更履歴を締める
+## 1.1. リリースコミットが自動で書き換えるもの
 
-[CHANGELOG.md](../CHANGELOG.md) は英日1ファイルです。各項目を `- (EN)` と `- (JA)` の2行で書き、作業中は `## Unreleased` の下に積んでいきます。締めるとは、それらにバージョン番号を与え、**空の `## Unreleased` をその上に開き直す**ことです。
+[CHANGELOG.md](../CHANGELOG.md) は英日1ファイルです。各項目を `- (EN)` と `- (JA)` の2行で書き、作業中は `## Unreleased` の下に積んでいきます。**手でやるのはここだけです。**
 
-```diff
- ## Unreleased
-+
-+## 1.2.0
- - (EN) …
- - (JA) …
-```
+あとは `npm version` が `scripts/sync-version.js` を走らせ、**タグが乗るのと同じコミットの中で**、それらの項目を `## <version>` の見出しの下に移し、空の `## Unreleased` を開き直し、`src/index.js` の `VERSION` 定数を更新し、README（英日）・`docs/`・`examples/` の `esp-flashjs@<version>` をすべて書き換えます。
 
-**`npm version` の前に、手でやります。** このアカウントの Arduino ライブラリでは同じ入れ替えを GitHub Actions がタグ push で行っていますが、ここでは組んでいませんし、組むべきでもありません。`npm version` は `npm run check` を走らせたうえで**コミット済みの内容にタグを打つ**ので、タグより後に Actions が書いた項目は、そのタグが指すコミットとは別物についての記述になります。先に手で入れておけば、変更履歴はリリースコミットそのものに入ります。読む人が探すのはそこです。
+最後のものは以前チェックリストと `grep` に任せていました。つまり**ずれていました**。README のとおりに試した人が、前の版のコードを読み込むことになります。
 
-機械的な部分は `npm run check` の2つの検査が見ます。
+**ローカルで行い、GitHub Actions にはしません。** Actions はタグ push で発火します。つまり**コミットができた後**なので、そこで書き換えたものはタグが指すコミットより後に入ります。しかも Pages は `main` から出るので、その間だけ古い版を案内するサイトが公開されます。
 
-| 検査 | 捕まえるもの |
-| --- | --- |
-| `the changelog keeps its shape` | バージョン番号だけになっていない見出し、タグの無い箇条書き、英日の項目数が食い違っている節 |
-| `the version being shipped has a changelog entry` | `## 1.2.0` の節が無いまま `npm version 1.2.0` を実行すること。**未記載のままリリースするのではなく、リリースを失敗させます** |
+### 推測せずに拒否するもの
 
-どちらも「内容が良いかどうか」は判断できません。そこは [3](#3-リリース前に手で見ておくこと) です。
+| 検査 | 場所 | 止めるもの |
+| --- | --- | --- |
+| `scripts/check-releasable.js` | `preversion` | `## Unreleased` が空のままリリースすること。**npm がバージョンを上げる前**に走るので、失敗しても作業ツリーは元のままです。npm は `version` フックが失敗してもバージョンを戻さないため、1つ後ろで気づくと手で戻す羽目になります |
+| `the changelog keeps its shape` | `npm run check` | バージョン番号だけになっていない見出し、タグの無い箇条書き、英日の項目数が食い違っている節 |
+| `no documented version pin is out of date` | `npm run check` | リポジトリ内のどこかにある `esp-flashjs@<version>` が `package.json` と食い違っていること。**スクリプトが知らないファイルに書かれた CDN URL** はこれで捕まります |
 
-日付は書きません。タグにもあり npm にもあるものを、手で維持する3つ目のコピーとして持つ理由がありません。
+スクリプトは書き込む前に全編集を先に確定させます。以前の版は README を書き換えてから変更履歴で例外を投げ、**リリースされていないバージョン番号が書かれたツリー**を残しました。
+
+内容が読む価値のあるものかどうかは、どれも判断できません。そこは [3](#3-リリース前に手で見ておくこと) です。
+
+**例示のバージョンは pin に見えてはいけません。** 「リポジトリ内の `esp-flashjs@<version>` はすべて現行リリースを指す」という規則なので、例示は `esp-flashjs@<broken>` のように書き、過去への言及はパッケージ名を付けずに書きます（`esp-flashjs@0.1.0` ではなく「0.1.0 はテストリリース」）。
+
+変更履歴に日付は書きません。タグにもあり npm にもあるものを、手で維持する3つ目のコピーとして持つ理由がありません。
 
 ---
 
@@ -84,19 +85,11 @@ push しても npm には出ません。**npm への公開はローカルでの 
 `npm version` が `npm run check` を走らせるので、テスト・型・レイヤ・ロケールは自動です。それでは拾えないものだけ確認します。
 
 - [ ] `git status` がクリーン
-- [ ] 変更履歴を締めた（[1.1](#11-変更履歴を締める)）。かつ、その内容が**コミット件名の羅列ではなく、利用者が知りたいこと**になっている
+- [ ] `## Unreleased` の内容が**コミット件名の羅列ではなく、利用者が知りたいこと**になっている。機械的な部分は [1.1](#11-リリースコミットが自動で書き換えるもの) が処理する
 - [ ] 前回のリリースで**間違っていたこと**を「修正」に丸めず明記する。旧版を使っている人には、そもそも動いたのかどうかが要る情報
 - [ ] README（英日）の**対応チップ表**を更新した（実機で確認できたものだけ「済」にする）
 - [ ] README の Phase 進捗が実態と合っている
 - [ ] 破壊的変更があれば README に書いた
-- [ ] README と `examples/` の **CDN URL のバージョン**を上げた
-
-```sh
-grep -rn "esp-flashjs@[0-9]" README.md README.ja.md examples/ docs/
-```
-
-古い版を指したままだと、新機能を試そうとした人が古いコードを読み込みます。
-
 ### 同梱物の確認
 
 ```sh
@@ -155,7 +148,7 @@ git tag -d v0.1.1            # タグも消す（番号は読み替え）
 `npm unpublish` は原則使いません（72 時間制限があり、同じ番号は二度と使えません）。修正を入れて次の版を出します。
 
 ```sh
-npm deprecate esp-flashjs@0.2.0 "Broken flash read; use 0.2.1 or later"
+npm deprecate esp-flashjs@<broken> "Broken flash read; use <fixed> or later"
 npm version patch
 npm publish --access public
 git push --follow-tags

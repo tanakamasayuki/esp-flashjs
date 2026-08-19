@@ -11,8 +11,8 @@ Related: [Development guide](./development.md) / [CI](./ci.md) / [Publishing](./
 
 ## 1. Every release (copy and paste this)
 
-With `main` clean, first close the changelog (see
-[section 1.1](#11-closing-the-changelog)), then:
+With `main` clean and the changelog written (see
+[section 1.1](#11-what-the-release-commit-rewrites-for-you)):
 
 ```sh
 npm version patch              # patch for fixes / minor for features / major for breaking changes
@@ -24,7 +24,7 @@ That is the whole procedure. What each command does on its own:
 
 | Command | Runs automatically |
 | --- | --- |
-| `npm version <ver>` | ① `preversion` = `npm run check` (tests, types, layers, locales — **a failure means no version is created**) ② `scripts/sync-version.js` syncs the `VERSION` constant in `src/index.js` ③ commits and creates the `v*` tag |
+| `npm version <ver>` | ① `preversion` = `npm run check` + `scripts/check-releasable.js` (**a failure here means no version is created and nothing is touched**) ② `scripts/sync-version.js` closes the changelog and rewrites every version reference ([1.1](#11-what-the-release-commit-rewrites-for-you)) ③ commits and creates the `v*` tag |
 | `npm publish` | `prepack` = `npm run build` + `npm run types`, producing `dist/` and `types/` before packing |
 | `git push --follow-tags` | Pushes the commit and the tag. Pages redeploys. **release.yml does not fire** — it is a manual-only spare |
 
@@ -42,41 +42,48 @@ pinned to `^1` will take the fix without reading anything.
 
 ---
 
-## 1.1. Closing the changelog
+## 1.1. What the release commit rewrites for you
 
 [CHANGELOG.md](../CHANGELOG.md) is one bilingual file: every point appears
 twice, `- (EN)` then `- (JA)`, and entries accumulate under `## Unreleased`
-while work happens. Closing a release means giving those entries a version
-number and opening an empty `## Unreleased` above them:
+while work happens. **Write them as you go; that is the only manual part.**
 
-```diff
- ## Unreleased
-+
-+## 1.2.0
- - (EN) …
- - (JA) …
-```
+`npm version` then runs `scripts/sync-version.js`, which — in the same commit
+the tag lands on — moves those entries under a `## <version>` heading, opens a
+fresh empty `## Unreleased`, sets the `VERSION` constant in `src/index.js`, and
+rewrites every `esp-flashjs@<version>` in the READMEs, `docs/` and `examples/`.
 
-**By hand, before `npm version`.** Arduino libraries in this account have a
-GitHub Action do the same rename on a tag push; that is not wired up here, and
-it would be the wrong shape if it were. `npm version` runs `npm run check` and
-then tags whatever is committed — so an entry the Action wrote *after* the tag
-would describe a different commit than the one it is attached to. Doing it
-first puts the changelog in the release commit, which is where a reader will
-look for it.
+That last one used to be a checklist item and a `grep`, which is to say it
+drifted, and someone following the README then loaded the previous release's
+code.
 
-Two checks in `npm run check` cover the mechanical part:
+**Local, not a GitHub Action.** An Action fires on the tag push, which is
+*after* the commit exists — anything it rewrote would land in a later commit
+than the tag points at, and Pages, which deploys from `main`, would serve the
+stale version in between.
 
-| Check | What it catches |
-| --- | --- |
-| `the changelog keeps its shape` | A heading that is not a bare version, an untagged bullet, or a section where the English and Japanese bullet counts differ |
-| `the version being shipped has a changelog entry` | Running `npm version 1.2.0` without a `## 1.2.0` section — **this fails the release rather than shipping an undocumented version** |
+### What is refused rather than guessed
 
-Neither can judge whether the entries are any good. That part is
+| Guard | Where | What it stops |
+| --- | --- | --- |
+| `scripts/check-releasable.js` | `preversion` | Releasing with nothing under `## Unreleased`. It runs **before** npm raises the version, so a failure leaves the tree exactly as it was — npm does not put the version back when a `version` hook fails, and unpicking that by hand is the reason this check is not one step later |
+| `the changelog keeps its shape` | `npm run check` | A heading that is not a bare version, an untagged bullet, or a section where the English and Japanese bullet counts differ |
+| `no documented version pin is out of date` | `npm run check` | Any `esp-flashjs@<version>` anywhere that disagrees with `package.json` — which is how a CDN URL in a file the script does not know about gets caught |
+
+The script also works out every edit before writing a single one. An earlier
+version rewrote the READMEs and then threw on the changelog, leaving the tree
+carrying a version number that was never released.
+
+None of this can judge whether the entries are worth reading. That part is
 [section 3](#3-what-to-check-by-hand-first).
 
-No dates. A tag carries one, npm carries one, and a third copy maintained by
-hand is a third copy to get wrong.
+**Illustrative versions must not look like pins.** The rule is that every
+`esp-flashjs@<version>` in the repository names the current release, so an
+example writes `esp-flashjs@<broken>` instead, and a historical mention leaves
+the package name off — "0.1.0 was a test release", not `esp-flashjs@0.1.0`.
+
+No dates in the changelog. A tag carries one, npm carries one, and a third copy
+maintained by hand is a third copy to get wrong.
 
 ---
 
@@ -102,9 +109,9 @@ fail red on a version npm already has. To publish from CI instead, see
 covered. Only the things it cannot see are left.
 
 - [ ] `git status` is clean
-- [ ] The changelog is closed ([section 1.1](#11-closing-the-changelog)) and
-      the entries read as something a user would want to know, not as a list of
-      commit subjects
+- [ ] The `## Unreleased` entries read as something a user would want to know,
+      not as a list of commit subjects. Everything mechanical about them is
+      handled by [section 1.1](#11-what-the-release-commit-rewrites-for-you)
 - [ ] The **chip support table** in both READMEs is current — mark a chip
       verified only if it actually was
 - [ ] Phase progress in the READMEs matches reality
@@ -112,14 +119,6 @@ covered. Only the things it cannot see are left.
 - [ ] Anything the previous release got **wrong** is said plainly rather than
       folded into "fixes". Someone on the old version needs to know whether it
       could work at all
-- [ ] The **version in every CDN URL** in the READMEs and `examples/` is bumped
-
-```sh
-grep -rn "esp-flashjs@[0-9]" README.md README.ja.md examples/ docs/
-```
-
-Left stale, someone trying a new feature loads old code.
-
 ### Check the package contents
 
 ```sh
@@ -185,7 +184,7 @@ Avoid `npm unpublish` — it is limited to 72 hours and the number can never be
 reused. Ship the fix instead.
 
 ```sh
-npm deprecate esp-flashjs@0.2.0 "Broken flash read; use 0.2.1 or later"
+npm deprecate esp-flashjs@<broken> "Broken flash read; use <fixed> or later"
 npm version patch
 npm publish --access public
 git push --follow-tags

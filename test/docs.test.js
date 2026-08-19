@@ -279,3 +279,33 @@ test('the version being shipped has a changelog entry', () => {
     `CHANGELOG.md has no "## ${version}" section. Move the Unreleased entries under it before releasing.`,
   );
 });
+
+test('no documented version pin is out of date', () => {
+  // CDN URLs and npm links used to be a checklist item and a `grep`, which is
+  // to say they drifted: someone following the README then loads the previous
+  // release's code. `scripts/sync-version.js` rewrites them during
+  // `npm version`; this is what catches one it does not know about, such as a
+  // CDN URL in a file added since.
+  const root = new URL('../', import.meta.url);
+  const { version } = JSON.parse(readFileSync(new URL('package.json', root), 'utf8'));
+
+  /** @param {URL} dir @returns {string[]} */
+  const walk = (dir) =>
+    readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+      if (['node_modules', '.git', 'dist', 'site', 'types'].includes(entry.name)) return [];
+      const child = new URL(`${entry.name}${entry.isDirectory() ? '/' : ''}`, dir);
+      return entry.isDirectory() ? walk(child) : [child.pathname];
+    });
+
+  /** @type {string[]} */
+  const stale = [];
+  for (const file of walk(root)) {
+    if (!/\.(md|html|js|json)$/.test(file)) continue;
+    const text = readFileSync(file, 'utf8');
+    for (const match of text.matchAll(/esp-flashjs@(\d+\.\d+\.\d+)/g)) {
+      if (match[1] !== version) stale.push(`${file.replace(root.pathname, '')}: ${match[0]}`);
+    }
+  }
+
+  assert.deepEqual(stale, [], `these still point at an older release; expected ${version}`);
+});
