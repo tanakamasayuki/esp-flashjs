@@ -270,5 +270,20 @@
   "nvs.notFlashEncrypted": "フラッシュ暗号化は NVS を対象にしません。NVS 暗号化（nvs_keys パーティションの鍵を使う別機能）を個別に有効にしていない限り、この領域は平文です。",
   "nvs.likelyEncrypted": "読めるページが1つもなく、バイト列に構造がありません。空のパーティションではなく NVS 暗号化の可能性が高いです。",
   "protocol.chipRevision": "シリコンリビジョン {revision}。{stub} の stub を使用します。",
-  "protocol.revisionUnknown": "シリコンリビジョンを読めませんでした（{message}）。既定の stub を使用します。"
+  "protocol.revisionUnknown": "シリコンリビジョンを読めませんでした（{message}）。既定の stub を使用します。",
+  "fs.add": "ファイルを追加…",
+  "fs.add.hint": "このファイルシステムの直下に追加します。書き戻しを押すまで何も書き込まれません。",
+  "fs.replace": "置換",
+  "fs.delete": "削除",
+  "fs.apply": "書き戻し",
+  "fs.apply.hint": "編集内容からパーティションイメージ全体を再構築し、現在の内容をバックアップしてから書き込みます。",
+  "fs.revert": "編集を破棄",
+  "fs.pending": "未適用の変更 {count} 件",
+  "confirm.fsChanges": "ファイルシステムを再構築し、パーティション全体を書き換えます。空き領域はゼロで埋めるので、削除したファイルは残りません。",
+  "error.FS_CAPACITY": "ファイルがパーティションに収まりません。",
+  "error.FS_PATH": "このファイルシステムに保存できないパスです。",
+  "fs.rebuildIncomplete": "{count} 件のファイルはこのイメージから一部しか復元できていません。再構築すると欠損部分がゼロとして書き込まれ、復元不能になります: {paths}",
+  "fs.spiffsNoDirectories": "SPIFFS にディレクトリの概念はないため、空のディレクトリ {count} 件は再構築後に残りません: {paths}",
+  "fs.spiffsNameTooLong": "{count} 件のパスが SPIFFS の名前長 {limit} バイトを超えています: {paths}",
+  "fs.fatIllegalName": "{count} 件の名前に FAT が記録できない文字が含まれています: {paths}"
 }

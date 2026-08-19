@@ -270,5 +270,20 @@
   "nvs.notFlashEncrypted": "快閃加密不涵蓋 NVS。除非單獨啟用了 NVS 加密（使用 nvs_keys 分割區中的獨立金鑰），該分割區以明文儲存。",
   "nvs.likelyEncrypted": "沒有可讀頁面，且位元組沒有結構。這更可能是 NVS 加密，而非空分割區。",
   "protocol.chipRevision": "晶片版本 {revision}，使用 {stub} stub。",
-  "protocol.revisionUnknown": "無法讀取晶片版本（{message}），使用預設 stub。"
+  "protocol.revisionUnknown": "無法讀取晶片版本（{message}），使用預設 stub。",
+  "fs.add": "新增檔案…",
+  "fs.add.hint": "在此檔案系統根目錄新增檔案。按下寫回之前不會寫入任何內容。",
+  "fs.replace": "取代",
+  "fs.delete": "刪除",
+  "fs.apply": "寫回",
+  "fs.apply.hint": "依這些編輯重建整個分割區映像，並在備份目前內容後寫入。",
+  "fs.revert": "捨棄編輯",
+  "fs.pending": "{count} 項待套用的變更",
+  "confirm.fsChanges": "將重建檔案系統並重寫整個分割區。空閒空間會被清零，因此已刪除的檔案不會殘留。",
+  "error.FS_CAPACITY": "檔案無法放入此分割區。",
+  "error.FS_PATH": "此路徑無法存入這個檔案系統。",
+  "fs.rebuildIncomplete": "有 {count} 個檔案只從映像中部分復原。重建會把缺口寫成零，使其無法再復原：{paths}",
+  "fs.spiffsNoDirectories": "SPIFFS 沒有目錄概念，因此 {count} 個空目錄不會在重建後保留：{paths}",
+  "fs.spiffsNameTooLong": "有 {count} 個路徑超過 SPIFFS 可命名的 {limit} 位元組：{paths}",
+  "fs.fatIllegalName": "有 {count} 個名稱使用了 FAT 無法記錄的字元：{paths}"
 }

@@ -129,7 +129,7 @@ re-litigated mid-implementation.
 | 5 | **Flash read and region erase require the stub loader** | The ESP32 ROM loader has no `READ_FLASH(0xd2)`, `ERASE_FLASH(0xd0)` or `ERASE_REGION(0xd1)`. Dump, partition read and NVS analysis all depend on it, making it a Phase 1 requirement ([6.4](#64-the-flasher-stub)) |
 | 6 | **Stub JSON is fetched at runtime, never inlined** | Inlining every chip would add a few hundred KB to the bundle and charge it to people doing offline analysis only. Adding a chip becomes "drop in a JSON file" |
 | 7 | **Transport is Reader/Writer-based async I/O with timeouts and `AbortSignal`** | A "read N bytes" interface does not survive contact with real serial I/O: SLIP is delimited, so the length is not known in advance |
-| 8 | **Filesystems are read-only; rebuilding is Phase 4** | Writing a filesystem image carries compatibility risk that reading does not, and reading is what makes a device inspectable. All three formats are parsed |
+| 8 | **Filesystems were read-only until rebuilding was verifiable** | Writing an image carries a compatibility risk reading does not, and reading is what makes a device inspectable. Rebuilding landed in Phase 4 once each format had a check the round trip could not fake ([12.2](#122-rebuilding)) |
 | 9 | **The UI is multilingual, detecting from `navigator.languages`** | The ESP32 audience is international, and retrofitting i18n means auditing every string. The catalogue is externalized from the start |
 
 ---
@@ -1220,7 +1220,7 @@ A type-only change is still `modified`, expressed through
 
 > Implemented and verified against images captured from three chips.
 
-All three formats are **read-only**. Each returns the same shape, so the UI
+All three formats parse and rebuild. Each returns the same shape, so the UI
 does not have to know which one it is looking at.
 
 ```js
@@ -1282,9 +1282,47 @@ lie.
 
 ### 12.2 Rebuilding
 
-Phase 4 covers `Extract / Replace / Add / Delete / Rebuild`. **Rebuild is
-restricted to regenerating at the original image's geometry**; creating an
-image from arbitrary parameters is out of scope.
+```js
+FsStore.from(image)                    // -> FsStore, a full copy
+store.write(path, bytes)               // add or replace
+store.delete(path)                     // a directory takes its subtree
+store.rename(from, to)
+checkFsStore(store, type)              // -> Issue[], before anything is built
+buildFs(store, { size, source })       // -> Uint8Array
+```
+
+**Rebuild is restricted to regenerating at the original image's geometry.**
+Creating a filesystem from arbitrary parameters is a different job: a partition
+formatted with a page size the device was not built for mounts and then
+misbehaves, and there is no way to check that from here.
+
+The hard part is not writing the bytes; it is knowing they are right. A builder
+and a parser written from the same reading of a format agree with each other
+whether or not that reading was correct, and this project has already been
+caught by exactly that — SPIFFS page flags were read the wrong way round and
+every test passed. So each format is pinned by a check the round trip cannot
+satisfy on its own:
+
+| Format | What the round trip cannot see | What is checked instead |
+| --- | --- | --- |
+| SPIFFS | The parser sweeps every page and never reads an object index; a device only reads the index | `readSpiffsViaIndex` reaches the data the way the device does. It agrees with the parser on the captured images, so agreement on a built one means the index tables are right |
+| LittleFS | A metadata pair that is off the tail chain reads back perfectly and is handed out as free space on the device's next write | `littlefsTraverse` walks the chain the block allocator walks, and the build fails if any pair it wrote is unreachable |
+| FAT | The wear-levelling state at the end of the partition is not part of any published format | It is never regenerated. `buildFat` requires the source image and carries the boot sector, the spare sector and the tail over untouched, writing through the same mapping the parse used |
+
+Three consequences worth stating plainly:
+
+- **A rebuild compacts.** Deleted pages, superseded entries and the history in
+  a LittleFS log all go away. The result holds the same files and is not the
+  same bytes.
+- **Free space is zeroed in FAT.** A real filesystem only unlinks a deleted
+  file, but an image someone is about to publish should not carry the contents
+  of one.
+- **Modification times are not preserved.** SPIFFS stores an mtime beside each
+  name and ESP-IDF's LittleFS stores one as a user attribute; neither survives,
+  because the store does not carry them.
+
+What none of this establishes is that a device mounts the result. That needs
+hardware, and `tools/hardware-check.mjs --rebuild` is where it happens.
 
 ---
 
@@ -1790,11 +1828,11 @@ See [publishing.md](./publishing.md) for the full account. In brief:
 
 ### Phase 4 — Extensions
 
-- [ ] SPIFFS / LittleFS / FAT rebuilding
+- [x] SPIFFS / LittleFS / FAT rebuilding ([12.2](#122-rebuilding))
 - [x] Publishing and documenting the analyzer plugin API ([analyzers.md](./analyzers.md); its example is executed by `test/analyzer-plugin.test.js`, so it cannot drift)
 - [x] NodeSerialTransport / WebUSBTransport — decided against shipping either; the `Transport` interface is the extension point and [transports.md](./transports.md) documents it with a working Node example. A Node transport would mean a native dependency, which costs every consumer the zero-dependency guarantee
 - [ ] Reconsidering ESP8266 support
-- [ ] Deciding on package splitting (`@esp-flashjs/*`)
+- [x] Deciding on package splitting (`@esp-flashjs/*`) — decided against
 
 ---
 
@@ -1803,7 +1841,7 @@ See [publishing.md](./publishing.md) for the full account. In brief:
 | # | Question | Notes |
 | --- | --- | --- |
 | 1 | **Hardware verification** | Resolved for ESP32, ESP32-S3 and ESP32-P4: each was erased, provisioned and captured, and those captures are the fixtures the parsers are tested against. It settled reset timing, READ_FLASH flow control and five parser bugs that MockTransport could not have caught. The other chips remain unverified and the README says so |
-| 2 | Whether and when to split packages | Decide in Phase 4. Until then, discipline comes from the directory boundaries |
+| 2 | ~~Whether and when to split packages~~ | **No.** The `esp-flashjs/core` subpath already gives an analysis-only consumer the smaller bundle — 80 KB against 108 KB minified — without a second package to version, publish and keep in step. Splitting would buy nothing a subpath export and `sideEffects: false` do not already buy, and would cost every release a coordination step. The directory boundaries, enforced by `lint:layers`, are what actually keeps the layering honest |
 | 3 | How to implement LittleFS | Write it, or port an existing JS implementation |
 | 4 | Additional languages | ko / de / fr / es / pt-BR / ru. Each is one JSON file |
 

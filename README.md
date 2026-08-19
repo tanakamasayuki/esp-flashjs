@@ -50,12 +50,13 @@ OTA data, binary diff and search, plus the reference web app.
 
 Published as [esp-flashjs@0.1.0](https://www.npmjs.com/package/esp-flashjs).
 
-NVS (parse, build, diff) and read-only SPIFFS, LittleFS and FAT are implemented
-too, and every one of them is tested against flash captured from an ESP32, an
-ESP32-S3 and an ESP32-P4 rather than against images this project generated —
-see [test fixtures](./tools/fixture-device/README.md) for why that distinction
-turned out to matter. Editing NVS from the UI and rebuilding filesystem images
-are still to come; see [the roadmap](./docs/spec.md#22-roadmap).
+NVS and all three filesystems — SPIFFS, LittleFS and FAT — are parsed, edited
+and rebuilt, from the API and from the web app alike. Every one of them is
+tested against flash captured from an ESP32, an ESP32-S3 and an ESP32-P4 rather
+than against images this project generated; see
+[test fixtures](./tools/fixture-device/README.md) for why that distinction
+turned out to matter, and [the roadmap](./docs/spec.md#22-roadmap) for what is
+left.
 
 ## Install
 

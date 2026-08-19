@@ -141,3 +141,52 @@ test('the sector map skips the spare and nothing else', () => {
   assert.equal(wlMapSector(3, 1), 4);
   assert.equal(wlMapSector(3, -1), 3, 'no spare, no shift');
 });
+
+test('a directory whose first entry has a long name is still found', (t) => {
+  // The wear-levelling spare is located by testing which offset puts real
+  // directory entries where the BPB says the root directory is. That test used
+  // to insist on a short name, and a long-name piece is eleven bytes of UTF-16
+  // rather than printable ASCII — so any volume whose first root entry has a
+  // long name failed detection outright and reported an empty filesystem.
+  //
+  // The image here is a captured one with a hand-built name piece spliced in
+  // front, rather than one this project generated, so the layout being matched
+  // is the specification's and not our own.
+  const path = new URL('./fixtures/hardware/esp32/ffat.bin', import.meta.url);
+  if (!existsSync(path)) return t.skip('no captured fixture');
+  const data = new Uint8Array(readFileSync(path));
+
+  const SECTOR = 4096;
+  const ROOT = 4 * SECTOR; // logical sector 3, past the spare at physical 1
+  const ROOT_BYTES = 4 * SECTOR;
+
+  const modified = new Uint8Array(data);
+  modified.copyWithin(ROOT + 32, ROOT, ROOT + ROOT_BYTES - 32);
+
+  // The short entry that now follows is HELLO.TXT; the checksum ties the two
+  // together, and an entry whose checksum does not match is ignored.
+  let checksum = 0;
+  for (const code of 'HELLO   TXT') {
+    checksum = (((checksum & 1) << 7) + (checksum >> 1) + code.charCodeAt(0)) & 0xff;
+  }
+
+  const name = 'greeting.txt';
+  const positions = [1, 3, 5, 7, 9, 14, 16, 18, 20, 22, 24, 28, 30];
+  const piece = new Uint8Array(32);
+  piece[0] = 0x01 | 0x40; // the only piece, and therefore the last one
+  piece[11] = 0x0f; // read-only + hidden + system + volume id
+  piece[13] = checksum;
+  positions.forEach((at, i) => {
+    const value = i < name.length ? name.charCodeAt(i) : i === name.length ? 0 : 0xffff;
+    piece[at] = value & 0xff;
+    piece[at + 1] = value >> 8;
+  });
+  modified.set(piece, ROOT);
+
+  const fs = parseFat(modified);
+  assert.deepEqual(fs.issues, [], 'the layout must still be recognised');
+  assert.equal(fs.geometry.wlDummySector, 1);
+  const file = fs.files.find((f) => f.path === '/greeting.txt');
+  assert.ok(file, 'and the long name must be the one reported');
+  assert.equal(file.size, 17, 'attached to the entry it belongs to');
+});

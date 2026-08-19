@@ -140,3 +140,14 @@ test('tag types are the values LittleFS writes', () => {
   assert.equal(LFS_TYPE.FCRC, 0x5ff);
   assert.equal(LFS_TYPE.CCRC >>> 8, LFS_TYPE.FCRC >>> 8, 'which is why they are easy to confuse');
 });
+
+test('a user attribute is skipped whatever byte it carries', () => {
+  // LFS_TYPE_USERATTR is 0x300 *plus* the attribute's own type byte, so a test
+  // for 0x300 exactly matches none of them. ESP-IDF writes the modification
+  // time under 't', which lands at 0x374 — visible in every captured image.
+  // Letting one through would pad the entry list out to reach whatever id it
+  // named.
+  assert.equal(LFS_TYPE.USERATTR, 0x300);
+  assert.equal(0x374 & 0x700, LFS_TYPE.USERATTR, "'t' for mtime is a user attribute");
+  assert.notEqual(LFS_TYPE.CTZSTRUCT & 0x700, LFS_TYPE.USERATTR, 'and a struct is not');
+});

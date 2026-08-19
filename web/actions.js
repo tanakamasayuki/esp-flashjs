@@ -9,6 +9,7 @@
  */
 
 import {
+  buildFs,
   buildNvs,
   EspFlash,
   EspLoader,
@@ -436,6 +437,41 @@ export async function writeNvs(partition, nvs) {
   // device should now hold what the store says; one read turns that from a
   // claim into a fact, and refreshes the view with the erased entries the
   // rebuild produced.
+  await readPartition(partition);
+  return true;
+}
+
+/**
+ * Rebuilds a filesystem partition from an edited tree and writes it back.
+ *
+ * The same shape as `writeNvs`, and for the same reason: the rebuild runs
+ * first and reads its own output before returning, so a change the format
+ * cannot hold fails while the device is still untouched. FAT additionally
+ * needs the bytes it came from — the wear-levelling state at the end of the
+ * partition can be carried over but never regenerated.
+ *
+ * @param {import('./esp-flashjs.js').Partition} partition
+ * @param {import('./esp-flashjs.js').FsStore} fs
+ * @param {Uint8Array|null} source The region as it was read.
+ * @returns {Promise<boolean>} Whether the write went through.
+ */
+export async function writeFilesystem(partition, fs, source) {
+  /** @type {Uint8Array} */
+  let image;
+  try {
+    image = buildFs(fs, { size: partition.size, source: source ?? undefined });
+  } catch (error) {
+    const err = /** @type {Error & {code?: string}} */ (error);
+    store.log('error', err.code ? `error.${err.code}` : 'error.unexpected', {
+      message: err.message,
+    });
+    return false;
+  }
+
+  await writePartition(partition, image);
+  // Re-read rather than assume. One read turns "the build says this is what is
+  // there now" into a fact, and refreshes the tree with the compacted layout
+  // the rebuild produced.
   await readPartition(partition);
   return true;
 }

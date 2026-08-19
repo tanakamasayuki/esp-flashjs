@@ -40,7 +40,7 @@ Phase 1 を実装済みです。Transport、ブートローダプロトコル、
 
 [esp-flashjs@0.1.0](https://www.npmjs.com/package/esp-flashjs) として公開済みです。
 
-NVS（parse / build / diff）と、SPIFFS・LittleFS・FAT の読み取りも実装済みです。いずれも**自前で生成したイメージではなく、ESP32 / ESP32-S3 / ESP32-P4 の実機から吸い出したフラッシュ**でテストしています。この区別がなぜ効いたかは [テスト fixture の作り方](./tools/fixture-device/README.ja.md) に書いてあります。UI からの NVS 編集とファイルシステムの再構築はこれからです。[ロードマップ](./docs/spec.ja.md#22-ロードマップ)を参照してください。
+NVS と、SPIFFS・LittleFS・FAT の3形式すべてについて、解析・編集・再構築が API からも Web アプリからも行えます。いずれも**自前で生成したイメージではなく、ESP32 / ESP32-S3 / ESP32-P4 の実機から吸い出したフラッシュ**でテストしています。この区別がなぜ効いたかは [テスト fixture の作り方](./tools/fixture-device/README.ja.md) に、残っている項目は[ロードマップ](./docs/spec.ja.md#22-ロードマップ)に書いてあります。
 
 ## インストール
 

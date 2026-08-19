@@ -58,6 +58,8 @@ export {
   AlignmentError,
   OutOfRangeError,
   NvsCapacityError,
+  FsCapacityError,
+  FsPathError,
   OperationAbortedError,
 } from './util/errors.js';
 
@@ -160,6 +162,32 @@ export {
   FAT_ATTR,
   FAT_ATTR_LONG_NAME,
 } from './format/fs/fat.js';
+export { FsStore, normalizeFsPath } from './format/fs/store.js';
+export { buildFs, checkFsStore } from './format/fs/build.js';
+export {
+  buildSpiffs,
+  readSpiffsViaIndex,
+  spiffsMagic,
+  spiffsIndexOffsets,
+  SPIFFS_META_LENGTH,
+  SPIFFS_OBJ_NAME_LEN,
+  SPIFFS_DATA_PAGE_FLAGS,
+  SPIFFS_INDEX_PAGE_FLAGS,
+} from './format/fs/spiffs-build.js';
+export {
+  buildLittlefs,
+  littlefsTraverse,
+  ctzBlockCount,
+  LITTLEFS_PROG_SIZE,
+  LITTLEFS_VERSION,
+} from './format/fs/littlefs-build.js';
+export {
+  buildFat,
+  longNameRecords,
+  shortNameChecksum,
+  shortNameFor,
+} from './format/fs/fat-build.js';
+export { verifyFsBuild } from './format/fs/verify.js';
 
 /* Analyzer registry ------------------------------------------------------- */
 export {

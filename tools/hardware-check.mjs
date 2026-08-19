@@ -14,10 +14,20 @@
  *
  *   node tools/hardware-check.mjs /dev/ttyUSB0
  *   node tools/hardware-check.mjs /dev/ttyACM3 --compare test/fixtures/hardware/esp32s3
+ *   node tools/hardware-check.mjs /dev/ttyUSB0 --rebuild
  *
  * With `--compare`, every region read is checked byte for byte against a
  * fixture esptool produced. Agreement between two independent implementations
  * is the strongest evidence available without a logic analyser.
+ *
+ * `--rebuild` is the only test that can settle whether a filesystem this
+ * library writes is one a device will mount. Everything else — including the
+ * build self-check — reads the image back with code from this repository, and
+ * a builder and a reader written from the same understanding of a format agree
+ * with each other whether or not that understanding is right. So this edits
+ * each filesystem, writes it back, resets the board, and reads the chip's own
+ * driver reporting what it found. THE BOARD MUST BE RUNNING fixture_verify,
+ * not fixture_device: the provisioner reformats everything on boot.
  */
 
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
@@ -30,6 +40,11 @@ import { md5Hex } from '../src/binary/hash.js';
 import { parseNvs } from '../src/format/nvs/parse.js';
 import { parseSpiffs } from '../src/format/fs/spiffs.js';
 import { parseLittlefs } from '../src/format/fs/littlefs.js';
+import { parseFat } from '../src/format/fs/fat.js';
+import { FsStore } from '../src/format/fs/store.js';
+import { buildFs } from '../src/format/fs/build.js';
+import { crc32 } from '../src/binary/hash.js';
+import { parsePartitionTable, PARTITION_TABLE_OFFSET, PARTITION_TABLE_SIZE } from '../src/format/partition.js';
 import { BridgeTransport } from './bridge-transport.mjs';
 
 /**
@@ -75,10 +90,12 @@ const chunkIndex = args.indexOf('--chunk');
 // is the only thing that helps, which is why this is a knob rather than a
 // constant.
 const chunkSize = chunkIndex >= 0 ? Number(args[chunkIndex + 1]) : undefined;
+const rebuild = args.includes('--rebuild');
 
 if (!path) {
   console.error(
-    'usage: node tools/hardware-check.mjs <port> [--compare <dir>] [--baud <rate>] [--chunk <bytes>]',
+    'usage: node tools/hardware-check.mjs <port> [--compare <dir>] [--baud <rate>] ' +
+      '[--chunk <bytes>] [--rebuild]',
   );
   process.exit(2);
 }
@@ -132,6 +149,85 @@ function summarizeFs(parse) {
       })),
     );
   };
+}
+
+/**
+ * The filesystems a rebuild is tried on, by partition label.
+ *
+ * Found in the device's own partition table rather than at fixed offsets: a
+ * rebuild writes, and writing to an address worked out from a stale constant
+ * is the one mistake in this file that could destroy something.
+ */
+const REBUILDABLE = {
+  spiffs: parseSpiffs,
+  littlefs: parseLittlefs,
+  ffat: parseFat,
+};
+
+/**
+ * What the device should report for an image, in the verifier's own format.
+ *
+ * @param {import('../src/format/fs/store.js').FsStore} store
+ * @returns {Map<string, string>} Path to "size crc32".
+ */
+function expectedListing(store) {
+  const out = new Map();
+  for (const entry of store.entries) {
+    if (entry.directory) continue;
+    out.set(entry.path, `${entry.data.length} ${crc32(entry.data).toString(16)}`);
+  }
+  return out;
+}
+
+/**
+ * Reads the verifier's output off the serial line after a reset.
+ *
+ * @param {BridgeTransport} port
+ * @param {number} timeoutMs
+ * @returns {Promise<string>}
+ */
+async function readVerifierOutput(port, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  const decoder = new TextDecoder();
+  let text = '';
+  while (Date.now() < deadline) {
+    try {
+      text += decoder.decode(await port.read({ timeoutMs: 1000 }), { stream: true });
+    } catch {
+      // A quiet second is normal while the chip boots; only the outer
+      // deadline decides that nothing is coming.
+      continue;
+    }
+    if (text.includes('VERIFY END')) break;
+  }
+  return text;
+}
+
+/**
+ * Turns the verifier's output into the same shape as {@link expectedListing}.
+ *
+ * @param {string} text
+ * @returns {Map<string, {mounted: boolean, files: Map<string, string>}>}
+ */
+function parseVerifierOutput(text) {
+  const out = new Map();
+  let current = null;
+  for (const line of text.split(/\r?\n/)) {
+    const fsLine = /^FS (\S+) (mounted|UNMOUNTABLE|end)$/.exec(line.trim());
+    if (fsLine) {
+      if (fsLine[2] === 'end') current = null;
+      else {
+        current = { mounted: fsLine[2] === 'mounted', files: new Map() };
+        out.set(fsLine[1], current);
+      }
+      continue;
+    }
+    const fileLine = /^F (\S+) (\d+) ([0-9a-fA-F]+)$/.exec(line.trim());
+    if (fileLine && current) {
+      current.files.set(fileLine[1], `${Number(fileLine[2])} ${fileLine[3].toLowerCase()}`);
+    }
+  }
+  return out;
 }
 
 let failures = 0;
@@ -217,6 +313,94 @@ try {
   const first = await flash.read(0x9000, 0x5000);
   const second = await flash.read(0x9000, 0x5000);
   check(md5Hex(first) === md5Hex(second), 'two reads of the same region agree');
+
+  if (rebuild) {
+    console.log('\nrebuilding filesystems and writing them back');
+    console.log('       the board must be running fixture_verify, not fixture_device');
+
+    const table = parsePartitionTable(
+      await flash.read(PARTITION_TABLE_OFFSET, PARTITION_TABLE_SIZE),
+    );
+    /** @type {Map<string, Map<string, string>>} */
+    const expected = new Map();
+
+    for (const [label, parse] of Object.entries(REBUILDABLE)) {
+      const partition = table.partitions.find((p) => p.label === label);
+      if (!partition) {
+        console.log(`       no "${label}" partition on this board; skipping`);
+        continue;
+      }
+
+      const before = await flash.read(partition.offset, partition.size, chunkSize ? { chunkSize } : {});
+      const image = parse(before);
+      if (image.files.length === 0) {
+        check(false, `${label}: nothing to rebuild — is the filesystem formatted?`);
+        continue;
+      }
+
+      const store = FsStore.from(image);
+      // An edit of each kind, so a rebuild that quietly drops one is visible.
+      // The marker also proves the device is reading the new image rather than
+      // a cached copy of the old one.
+      //
+      // Its name is chosen, not arbitrary. Spaces and more than 8.3 characters
+      // force FAT to write long-name entries, which nothing the provisioning
+      // sketch creates needs — so without this the whole long-name path, read
+      // and written, would never meet a real device. It still fits inside the
+      // 31 bytes SPIFFS can name.
+      store.write('/rebuilt by esp-flashjs.txt', 'written by esp-flashjs\n');
+      store.write('/hello.txt', 'replaced by esp-flashjs\n');
+      store.delete('/empty.txt');
+
+      /** @type {Uint8Array} */
+      let built;
+      try {
+        built = buildFs(store, { size: partition.size, source: before });
+      } catch (error) {
+        check(false, `${label}: build failed (${/** @type {Error} */ (error).message})`);
+        continue;
+      }
+      check(true, `${label} rebuilt (${built.length} bytes)`);
+
+      await flash.write(partition.offset, built, { verify: true });
+      check(true, `${label} written back and verified against the flash`);
+      expected.set(label, expectedListing(store));
+    }
+
+    if (expected.size > 0) {
+      console.log('\nresetting into the application to see whether it mounts them');
+      // The application talks at 115200 whatever rate the stub was raised to.
+      if (transport.baudRate !== 115200) await transport.setBaudRate(115200);
+      await loader.disconnect({ reset: true });
+      await transport.flushInput();
+
+      const text = await readVerifierOutput(transport, 25000);
+      if (!text.includes('VERIFY END')) {
+        check(false, 'the verifier never reported; is fixture_verify flashed?');
+        console.log(`       last output: ${text.trim().split(/\r?\n/).slice(-4).join(' | ')}`);
+      } else {
+        const reported = parseVerifierOutput(text);
+        for (const [label, files] of expected) {
+          const got = reported.get(label);
+          // This is the claim the whole exercise exists to test. Everything
+          // before it was this repository checking its own work.
+          check(Boolean(got?.mounted), `${label}: the device mounted the rebuilt image`);
+          if (!got?.mounted) continue;
+
+          for (const [path, signature] of files) {
+            const found = got.files.get(path);
+            check(found === signature, `${label}${path} reads back as ${signature}`);
+            if (found !== undefined && found !== signature) {
+              console.log(`       device says ${found}`);
+            }
+          }
+          const extra = [...got.files.keys()].filter((path) => !files.has(path));
+          check(extra.length === 0, `${label}: nothing the rebuild did not put there`);
+          if (extra.length > 0) console.log(`       also found: ${extra.join(', ')}`);
+        }
+      }
+    }
+  }
 } catch (error) {
   check(false, `unexpected: ${/** @type {Error} */ (error).message}`);
 } finally {

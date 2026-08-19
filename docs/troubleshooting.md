@@ -27,6 +27,7 @@ Two habits are worth more than anything on this page:
 - [A partition shows as empty when it should not](#a-partition-shows-as-empty-when-it-should-not)
 - [A filesystem lists files but their contents are wrong](#a-filesystem-lists-files-but-their-contents-are-wrong)
 - [Writing NVS is refused](#writing-nvs-is-refused)
+- [Rebuilding a filesystem is refused, or the device will not mount the result](#rebuilding-a-filesystem-is-refused-or-the-device-will-not-mount-the-result)
 - [Everything is slow](#everything-is-slow)
 - [It works in the browser but not in Node](#it-works-in-the-browser-but-not-in-node)
 
@@ -313,6 +314,64 @@ safety margin.
 type — 300 in a `U8`, say. Change the value or the type; the reference app
 rejects this at the input field rather than at build time, so the user finds
 out before reading a confirmation dialog.
+
+---
+
+## Rebuilding a filesystem is refused, or the device will not mount the result
+
+**`FsCapacityError`.** The files do not fit, and the shortfall is reported in
+pages, blocks or clusters rather than in bytes — because that is the unit that
+actually ran out. Shaving bytes off a file usually changes nothing: a SPIFFS
+page holds 251 bytes of file data whatever the file is, and a LittleFS block
+holds one file's worth however small that file is. A hundred 10-byte files on a
+4096-byte block size need a hundred blocks, not a kilobyte.
+
+SPIFFS keeps a block free and NVS keeps a page free, for the same reason: an
+image with no room left leaves the device able to read and unable to write.
+
+**`FsPathError: SPIFFS has no directories …`.** SPIFFS stores `/sub/nested.txt`
+as one 15-character name; there is no directory anywhere in the format. The
+whole path has to fit in 31 bytes, and an empty directory has nothing to exist
+as. Call `checkFsStore(store, 'spiffs')` before building and it will name both
+problems up front.
+
+**`buildFat needs the image the store came from`.** Pass `source`. The last
+three sectors of the partition hold the wear-levelling layer's own state,
+including a device id the chip chose at random and a checksum whose formula is
+not part of any published format. It can be carried over; it cannot be
+recreated.
+
+**`build self-check failed: …`.** The builder read its own output back and it
+did not match. This is a bug in this library, not in your data — please report
+it with the image if you can. Nothing was written to the device: the check runs
+before the build returns, which is the entire reason it is there.
+
+**The rebuild worked and the device still will not mount it.** Three things to
+check, in order:
+
+1. **Did you write the whole partition?** A rebuild is a complete image, not a
+   patch. Writing part of one over an existing filesystem gives a device two
+   incompatible halves.
+2. **Was it the right partition?** A LittleFS image in the partition labelled
+   `spiffs` is a real and common mistake — arduino-esp32's LittleFS defaults its
+   label to `spiffs`, for historical reasons. It will mount as neither.
+3. **Does the geometry match what the firmware was built with?** A rebuild uses
+   the geometry of the image it came from. If you built the store with
+   `new FsStore(...)` instead of `FsStore.from(...)`, it used defaults, and
+   SPIFFS in particular records nothing about its own geometry that would let
+   the device notice.
+
+If none of those explain it, `tools/hardware-check.mjs --rebuild` in this
+repository drives the loop end to end against a board and prints what the
+chip's own driver reported, which is more than any of this can tell you from
+the host side.
+
+**Something that was in the image is missing afterwards.** Rebuilding is not a
+copy — it compacts. Anything the format cannot represent goes away, and
+`checkFsStore` lists those before you build. Modification times are dropped in
+every format. If a file's contents came back as zeros in the middle, check
+`store.incomplete`: that file was already only partly recoverable, and the
+rebuild has now made the gap permanent.
 
 ---
 

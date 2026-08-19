@@ -272,7 +272,16 @@ function replayDirectory(attrs) {
       hardTail = type === LFS_TYPE.HARDTAIL;
       continue;
     }
-    if (type === LFS_TYPE.SUPERBLOCK || type === LFS_TYPE.USERATTR || type === LFS_TYPE.MOVESTATE) {
+    // A user attribute's type is 0x300 plus the byte the application chose, so
+    // matching 0x300 exactly misses every real one — ESP-IDF stores the
+    // modification time under 't', which is 0x374. Nothing is read from them
+    // here, but falling through would let one arrive for an id no entry has
+    // yet and pad the list out to reach it.
+    if (
+      type === LFS_TYPE.SUPERBLOCK ||
+      (type & 0x700) === LFS_TYPE.USERATTR ||
+      type === LFS_TYPE.MOVESTATE
+    ) {
       continue;
     }
 

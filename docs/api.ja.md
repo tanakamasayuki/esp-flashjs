@@ -154,6 +154,40 @@ new EspFlash(loader)
 
 補助と定数: `spiffsLookupPages`、`SPIFFS_FLAG`、`SPIFFS_GEOMETRIES`、`SPIFFS_PAGE_HEADER_SIZE`、`SPIFFS_NAME_OFFSET`、`SPIFFS_OBJ_ID_IX_FLAG`、`ctzIndexOf`、`ctzPointerCount`、`LFS_TYPE`、`LITTLEFS_MAGIC`、`parseBpb`、`readFatEntry`、`wlMapSector`、`FAT_ATTR`、`FAT_ATTR_LONG_NAME`。
 
+### ファイルシステムの編集と再構築
+
+| 名前 | 備考 |
+| --- | --- |
+| `FsStore.from(image)` | 解析済みイメージを丸ごとコピーした編集可能なツリー |
+| `new FsStore(type, geometry)` | 空の状態から作る |
+| `buildFs(store, { size, source, selfCheck })` | → `Uint8Array`。store 自身の形式で構築する |
+| `checkFsStore(store, type)` | → `Issue[]`。**対象形式が表現できないもの**を返す。容量は含まない（それは構築時の例外） |
+| `normalizeFsPath(path)` | 絶対パス化・末尾スラッシュ除去。`..` は `FsPathError` |
+
+`FsStore` のメンバ: `type`、`geometry`、`entries`、`paths`、`directories`、`size`、`byteLength`、`incomplete`、`has(path)`、`read(path)`、`write(path, contents)`、`mkdir(path)`、`delete(path)`、`rename(from, to)`、`clone()`。
+
+`incomplete` は、元イメージから一部しか復元できなかったパスの一覧です。欠損部分はゼロとして読めてしまうため、再構築するとその欠損が確定します。`checkFsStore` が警告するのはこれです。
+
+**再構築は元のジオメトリでの再生成に限られます。** 任意パラメータでのフォーマットはしません。またコンパクションを伴うため、**同じファイルを持つ別のバイト列**になります。更新日時は引き継がれません。
+
+ジオメトリを上書きしたい場合の形式別ビルダ:
+
+| 名前 | 備考 |
+| --- | --- |
+| `buildSpiffs(store, { size, pageSize, blockSize, objNameLen, metaLength, selfCheck })` | — |
+| `buildLittlefs(store, { size, blockSize, progSize, version, nameMax, fileMax, attrMax, inlineMax, selfCheck })` | — |
+| `buildFat(store, { source, date, time, selfCheck })` | `source` は必須。パーティション末尾の wear levelling 状態は引き継ぐことしかできず、再生成できない |
+
+自己検査。単体でも使えます。
+
+| 名前 | 備考 |
+| --- | --- |
+| `readSpiffsViaIndex(data, options)` | → `FsImage`。`parseSpiffs` の全ページ走査ではなく、**デバイスと同じくオブジェクトインデックス経由**で読む。両者が食い違うのは、まさにインデックスが壊れているときだけ |
+| `littlefsTraverse(data, { blockSize })` | → `{ blocks, pairs, issues }`。ブロックアロケータと同じく tail チェーンを辿る。チェーンから外れたペアは問題なく読めてしまい、次の書き込みで空き領域として払い出される |
+| `verifyFsBuild(image, expected, format)` | 再構築したイメージが指示どおりに読み戻せなければ例外 |
+
+追加の定数: `spiffsMagic`、`spiffsIndexOffsets`、`SPIFFS_META_LENGTH`、`SPIFFS_OBJ_NAME_LEN`、`SPIFFS_DATA_PAGE_FLAGS`、`SPIFFS_INDEX_PAGE_FLAGS`、`ctzBlockCount`、`LITTLEFS_PROG_SIZE`、`LITTLEFS_VERSION`、`longNameRecords`、`shortNameFor`、`shortNameChecksum`。
+
 ---
 
 ## 解析
@@ -204,6 +238,8 @@ new EspFlash(loader)
 | `AlignmentError` | `BAD_ALIGNMENT` |
 | `ChecksumError` | `CHECKSUM_MISMATCH` |
 | `CommandFailedError` | `COMMAND_FAILED` |
+| `FsCapacityError` | `FS_CAPACITY` |
+| `FsPathError` | `FS_PATH` |
 | `InvalidMagicError` | `INVALID_MAGIC` |
 | `NvsCapacityError` | `NVS_CAPACITY` |
 | `OperationAbortedError` | `ABORTED` |

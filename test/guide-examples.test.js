@@ -17,7 +17,10 @@ import { readFileSync, existsSync } from 'node:fs';
 import {
   analyzeBinary,
   analyzeBinaryAs,
+  buildFs,
   buildNvs,
+  checkFsStore,
+  FsStore,
   describeFlashLayout,
   diffNvs,
   findPartitionByLabel,
@@ -159,4 +162,52 @@ test('guide §7: a wrong SPIFFS geometry can be forced, and is not silently used
   const forced = parseSpiffs(bytes, { pageSize: 256, blockSize: 4096, detectGeometry: false });
   assert.equal(forced.geometry.pageSize, 256);
   assert.ok(forced.files.length > 0);
+});
+
+test('guide §7: editing a filesystem and rebuilding it', (t) => {
+  const bytes = region('littlefs');
+  if (!bytes) return t.skip('no captured fixture');
+
+  const store = FsStore.from(parseLittlefs(bytes));
+
+  store.write('/config.json', JSON.stringify({ mode: 'field' }));
+  store.delete('/sub');
+  store.rename('/hello.txt', '/archive/hello.txt');
+
+  for (const issue of checkFsStore(store)) {
+    assert.ok(issue.code && issue.level, 'every issue is reportable');
+  }
+
+  const rebuilt = buildFs(store, { size: bytes.length, source: bytes });
+
+  const back = parseLittlefs(rebuilt);
+  assert.deepEqual(back.issues, []);
+  const paths = back.files.filter((f) => !f.directory).map((f) => f.path).sort();
+  assert.deepEqual(paths, ['/archive/hello.txt', '/big.bin', '/config.json', '/empty.txt']);
+  assert.equal(
+    new TextDecoder().decode(
+      /** @type {any} */ (back.files.find((f) => f.path === '/config.json')).read(),
+    ),
+    '{"mode":"field"}',
+  );
+
+  // The guide says a rebuild compacts rather than reproducing the original.
+  // Someone diffing the two and expecting silence would be surprised, so the
+  // claim is worth pinning.
+  assert.notEqual(Buffer.from(rebuilt).toString('hex'), Buffer.from(bytes).toString('hex'));
+});
+
+test('guide §7: a rebuild that cannot fit throws instead of truncating', () => {
+  const store = new FsStore('spiffs');
+  store.write('/x.bin', new Uint8Array(200000));
+
+  assert.throws(
+    () => buildFs(store, { size: 64 * 1024 }),
+    (error) => {
+      // The guide promises the shortfall is reported in the unit that ran out.
+      assert.equal(/** @type {any} */ (error).code, 'FS_CAPACITY');
+      assert.equal(/** @type {any} */ (error).details.unit, 'page');
+      return true;
+    },
+  );
 });

@@ -252,6 +252,49 @@ export class NvsCapacityError extends EspFlashError {
 }
 
 /**
+ * Thrown when a filesystem image cannot hold what it was asked to hold.
+ *
+ * Reported in the format's own storage unit rather than in bytes, because that
+ * is what actually ran out: a 4 KB SPIFFS page holds 251 bytes of a file, and
+ * a LittleFS block holds one file's worth of data however small the file is.
+ * Quoting bytes would suggest the shortfall can be closed by shaving bytes off
+ * a file, which is usually false.
+ */
+export class FsCapacityError extends EspFlashError {
+  /**
+   * @param {string} format  'spiffs', 'littlefs' or 'fat'.
+   * @param {string} unit    What ran out: 'page', 'block', 'cluster', …
+   * @param {number} required
+   * @param {number} available
+   */
+  constructor(format, unit, required, available) {
+    super(
+      'FS_CAPACITY',
+      `${format} image does not fit: needs ${required} ${unit}s, has ${available}.`,
+      { format, unit, required, available },
+    );
+  }
+}
+
+/**
+ * Thrown when a path cannot be stored in the target filesystem.
+ *
+ * The three formats disagree about what a path is, and the disagreement is not
+ * cosmetic: SPIFFS has no directories at all and stores `/a/b.txt` as a
+ * 31-character name, so a path that fits LittleFS may be unrepresentable in
+ * the image next to it.
+ */
+export class FsPathError extends EspFlashError {
+  /**
+   * @param {string} path
+   * @param {string} reason
+   */
+  constructor(path, reason) {
+    super('FS_PATH', `Cannot store "${path}": ${reason}`, { path, reason });
+  }
+}
+
+/**
  * Thrown when an operation is cancelled through an AbortSignal.
  *
  * Flash state after a cancelled write or erase is undefined; that fact is part

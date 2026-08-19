@@ -270,5 +270,20 @@
   "nvs.notFlashEncrypted": "闪存加密不涵盖 NVS。除非单独启用了 NVS 加密（使用 nvs_keys 分区中的独立密钥），该分区以明文存储。",
   "nvs.likelyEncrypted": "没有可读页面，且字节没有结构。这更可能是 NVS 加密，而非空分区。",
   "protocol.chipRevision": "芯片版本 {revision}，使用 {stub} stub。",
-  "protocol.revisionUnknown": "无法读取芯片版本（{message}），使用默认 stub。"
+  "protocol.revisionUnknown": "无法读取芯片版本（{message}），使用默认 stub。",
+  "fs.add": "添加文件…",
+  "fs.add.hint": "在此文件系统根目录添加文件。按下写回之前不会写入任何内容。",
+  "fs.replace": "替换",
+  "fs.delete": "删除",
+  "fs.apply": "写回",
+  "fs.apply.hint": "根据这些编辑重建整个分区镜像，并在备份当前内容后写入。",
+  "fs.revert": "放弃编辑",
+  "fs.pending": "{count} 处待应用的更改",
+  "confirm.fsChanges": "将重建文件系统并重写整个分区。空闲空间会被清零，因此已删除的文件不会残留。",
+  "error.FS_CAPACITY": "文件无法放入该分区。",
+  "error.FS_PATH": "该路径无法存入此文件系统。",
+  "fs.rebuildIncomplete": "有 {count} 个文件只从镜像中部分恢复。重建会把缺口写成零，使其无法再恢复：{paths}",
+  "fs.spiffsNoDirectories": "SPIFFS 没有目录概念，因此 {count} 个空目录不会在重建后保留：{paths}",
+  "fs.spiffsNameTooLong": "有 {count} 个路径超过 SPIFFS 可命名的 {limit} 字节：{paths}",
+  "fs.fatIllegalName": "有 {count} 个名称使用了 FAT 无法记录的字符：{paths}"
 }

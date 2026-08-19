@@ -22,6 +22,7 @@ every export, see [api.md](./api.md). When something does not work, see
 5. [The partition table](#5-the-partition-table)
 6. [NVS: reading, editing, writing back](#6-nvs-reading-editing-writing-back)
 7. [Filesystems: SPIFFS, LittleFS, FAT](#7-filesystems-spiffs-littlefs-fat)
+   - [Editing and rebuilding](#editing-and-rebuilding)
 8. [Writing safely](#8-writing-safely)
 9. [Progress and cancellation](#9-progress-and-cancellation)
 10. [Errors](#10-errors)
@@ -440,6 +441,72 @@ spare and skips it. `parseFat` finds that spare automatically. Ignoring it
 parses the boot sector perfectly and then reads the file allocation table as if
 it were the root directory — which yields one file whose name is bytes of the
 FAT.
+
+### Editing and rebuilding
+
+Take a copy, change it, build a new image:
+
+```js
+import { parseLittlefs, FsStore, buildFs, checkFsStore } from 'esp-flashjs/core';
+
+const store = FsStore.from(parseLittlefs(bytes));
+
+store.write('/config.json', JSON.stringify({ mode: 'field' }));  // add or replace
+store.delete('/logs');                                           // and its subtree
+store.rename('/old.bin', '/archive/old.bin');
+
+for (const issue of checkFsStore(store)) console.warn(issue.code, issue.params);
+
+const rebuilt = buildFs(store, { size: bytes.length, source: bytes });
+```
+
+`FsStore.from` reads every file up front. That is the point: once one file
+changes, every offset in the image moves, so there is nothing left to be lazy
+about.
+
+**`buildFs` throws rather than truncating.** `FsCapacityError` when the files
+do not fit — reported in pages, blocks or clusters, because that is the unit
+that ran out — and `FsPathError` when a path cannot be stored at all. Before
+writing, it reads its own output back and compares; a build that cannot prove
+itself fails while the device is still untouched.
+
+Four things to know before you write the result to a board:
+
+- **`source` is required for FAT.** The last sectors of the partition hold the
+  wear-levelling layer's own state, including a device id the chip chose at
+  random. That cannot be regenerated, only carried over.
+- **A rebuild compacts.** Deleted pages, superseded entries and the whole
+  history in a LittleFS log go away. The result holds the same files and is
+  *not* the same bytes, so do not diff it against the original expecting
+  silence.
+- **Check `store.incomplete` first.** A file that was only partly recovered
+  reads back with zeros in the gaps, and rebuilding writes those zeros down.
+  `checkFsStore` reports this as `fs.rebuildIncomplete`; it is a warning rather
+  than an error because sometimes that really is what you want.
+- **Some things do not survive the format you are writing into.** SPIFFS has no
+  directories — `/sub/nested.txt` is a single 15-byte name — so an empty
+  directory has nothing to exist as, and a path over 31 bytes cannot be stored
+  at all. `checkFsStore` names both before anything is built.
+
+Modification times are not preserved. SPIFFS keeps one beside each name and
+ESP-IDF's LittleFS keeps one as a user attribute; the store does not carry
+either.
+
+Then write it like any other partition — see [§8](#8-writing-safely):
+
+```js
+await flash.write(partition.offset, rebuilt, { verify: true });
+```
+
+One honest caveat. Everything above is checked by reading the result back, and
+for SPIFFS and LittleFS that read deliberately takes a different route than the
+parser does — through the object index, and along the tail chain the block
+allocator follows — because a builder and a parser written from the same
+understanding of a format agree with each other whether or not that
+understanding is right. But no amount of that proves a *device* mounts the
+image. If that matters to you, `tools/hardware-check.mjs --rebuild` in this
+repository drives the whole loop against a board and reads the chip's own
+driver reporting what it found.
 
 ---
 

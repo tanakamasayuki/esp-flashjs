@@ -17,6 +17,7 @@
 5. [パーティションテーブル](#5-パーティションテーブル)
 6. [NVS: 読む・編集する・書き戻す](#6-nvs-読む編集する書き戻す)
 7. [ファイルシステム: SPIFFS / LittleFS / FAT](#7-ファイルシステム-spiffs-littlefs-fat)
+   - [編集と再構築](#編集と再構築)
 8. [安全に書き込む](#8-安全に書き込む)
 9. [進捗とキャンセル](#9-進捗とキャンセル)
 10. [エラー](#10-エラー)
@@ -360,6 +361,45 @@ parseSpiffs(bytes, { pageSize: 256, blockSize: 4096, detectGeometry: false });
 **LittleFS** はスーパーブロックにジオメトリを持つので、推測は不要です。
 
 **FAT** は ESP-IDF では wear levelling 層の下にあり、1セクタが予備として飛ばされます。`parseFat` はその位置を自動判定します。無視すると**ブートセクタは完璧に解析したうえで、ルートディレクトリの位置から FAT テーブルを読む**ことになり、FAT の中身を名前にしたファイルが1件出てきます。
+
+### 編集と再構築
+
+コピーを取り、変更し、新しいイメージを組み立てます。
+
+```js
+import { parseLittlefs, FsStore, buildFs, checkFsStore } from 'esp-flashjs/core';
+
+const store = FsStore.from(parseLittlefs(bytes));
+
+store.write('/config.json', JSON.stringify({ mode: 'field' }));  // 追加または置換
+store.delete('/logs');                                           // 配下ごと
+store.rename('/old.bin', '/archive/old.bin');
+
+for (const issue of checkFsStore(store)) console.warn(issue.code, issue.params);
+
+const rebuilt = buildFs(store, { size: bytes.length, source: bytes });
+```
+
+`FsStore.from` は全ファイルを先に読みます。それが狙いです。1ファイル変わった時点でイメージ内の全オフセットが動くので、遅延させる意味がもう無いからです。
+
+**`buildFs` は切り詰めずに例外を投げます。** 入り切らなければ `FsCapacityError`（ページ／ブロック／クラスタ単位で報告します。**実際に足りなくなった単位はそれ**だからです）、そもそも保存できないパスなら `FsPathError`。返す前に自分の出力を読み直して突き合わせるので、**デバイスに手を付ける前に**失敗します。
+
+実機に書き込む前に知っておくことが4つあります。
+
+- **FAT では `source` が必須です。** パーティション末尾に wear levelling 層自身の状態（チップが乱数で決めたデバイスIDを含む）があり、これは再生成できず、引き継ぐことしかできません
+- **再構築はコンパクションでもあります。** 削除済みページ、上書きされたエントリ、LittleFS ログの履歴は全部消えます。**同じファイルを持つ別のバイト列**になるので、元イメージと diff して無差分を期待しないでください
+- **先に `store.incomplete` を見てください。** 一部しか復元できなかったファイルは欠損部分がゼロとして読め、再構築するとそのゼロが書き込まれます。`checkFsStore` は `fs.rebuildIncomplete` として報告します。エラーではなく警告なのは、それが望みどおりである場合もあるからです
+- **書き込む先の形式に存在できないものがあります。** SPIFFS にディレクトリはなく `/sub/nested.txt` は15バイトの1個の名前です。したがって**空ディレクトリは存在のしようがなく**、31バイトを超えるパスはそもそも保存できません。`checkFsStore` はどちらも構築前に指摘します
+
+更新日時は保存されません。SPIFFS は名前の隣に、ESP-IDF の LittleFS はユーザ属性として持っていますが、store がどちらも運びません。
+
+あとは他のパーティションと同じように書き込みます（[§8](#8-安全に書き込む)）。
+
+```js
+await flash.write(partition.offset, rebuilt, { verify: true });
+```
+
+正直に書いておくべき留保が1つあります。上記はすべて**結果を読み戻して**確認しています。SPIFFS と LittleFS については、その読み戻しはパーサとは意図的に別経路です（オブジェクトインデックス経由、およびブロックアロケータが辿る tail チェーン）。同じ理解から書かれた builder と parser は、その理解が間違っていても互いに一致するからです。しかしそれでも「**デバイスが実際にマウントするか**」は証明できません。そこが重要なら、このリポジトリの `tools/hardware-check.mjs --rebuild` が実機に対して一連の流れを実行し、チップ自身のドライバが何を見つけたかを読み取ります。
 
 ---
 

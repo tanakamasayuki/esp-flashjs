@@ -219,6 +219,24 @@ function looksLikeDirectory(sector) {
   const first = sector[0];
   if (first === ENTRY_FREE_AND_LAST) return false; // an empty root proves nothing
   if (first === ENTRY_DELETED) return true;
+
+  // A file with a long name is stored as its name pieces followed by the short
+  // entry, so a directory can perfectly well *begin* with one — and its first
+  // eleven bytes are UTF-16, not printable ASCII. Testing only for a short name
+  // therefore rejects the real root directory of any volume whose first entry
+  // has a long name, which lands as "no valid layout" and an empty filesystem.
+  if ((sector[11] & 0x3f) === FAT_ATTR_LONG_NAME) {
+    const order = sector[0];
+    return (
+      (order & 0x40) !== 0 && // a set is stored last piece first
+      (order & 0x3f) >= 1 &&
+      (order & 0x3f) <= 20 &&
+      sector[12] === 0 &&
+      sector[26] === 0 &&
+      sector[27] === 0
+    );
+  }
+
   // A short name is eleven bytes of printable ASCII, and its attribute byte
   // never has the top two bits set.
   for (let i = 0; i < 11; i++) {

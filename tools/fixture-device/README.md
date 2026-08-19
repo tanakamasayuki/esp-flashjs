@@ -238,7 +238,7 @@ All three get the same tree, so results can be compared across formats.
 
 ```
 /hello.txt      a short text file
-/big.bin        4096 bytes, larger than one page
+/big.bin        20000 bytes, enough to chain storage units in all three
 /sub/nested.txt a nested path
 /empty.txt      an empty file
 ```
@@ -246,6 +246,41 @@ All three get the same tree, so results can be compared across formats.
 Some formats are unavailable on some chips or partition sizes. The sketch prints
 `unavailable` and carries on; capture whatever worked. FAT in particular needs a
 wear-levelling layer and will not fit a small partition.
+
+---
+
+## Checking a rebuilt filesystem
+
+`fixture_verify` is a second sketch in this directory. It mounts the three
+filesystems **without formatting them** and prints what it finds, one line per
+file, with a CRC-32 it computes itself.
+
+That is the only test that can settle whether an image this library *writes* is
+one a device will mount. Every other check reads the result back with code from
+this repository, and a builder and a reader written from the same understanding
+of a format agree with each other whether or not that understanding is correct.
+This project has already been caught by that once, with SPIFFS page flags.
+
+```
+# 1. Flash fixture_verify (NOT fixture_device, which reformats on boot)
+# 2. Then:
+node tools/hardware-check.mjs /dev/ttyUSB0 --rebuild
+```
+
+The harness reads each filesystem off the board, adds a file, replaces another
+and deletes a third, rebuilds the image, writes it back, resets into the
+application, and compares the sketch's report with what it intended to write.
+
+The file it adds is called `rebuilt by esp-flashjs.txt`. The spaces and the
+length are the point: FAT has to write long-name entries for it, and nothing
+`fixture_device` creates needs them, so this is the only place the long-name
+path — reading and writing — meets a real device. It still fits inside the 31
+bytes SPIFFS can name.
+
+**This overwrites the filesystems on the board.** Re-run `provision.sh` to get
+back to a capturable state; do not capture fixtures from a board that has been
+through `--rebuild`, or the fixtures stop being bytes this project did not
+produce, which is the entire reason they exist.
 
 ---
 

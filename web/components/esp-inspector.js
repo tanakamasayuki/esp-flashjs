@@ -12,6 +12,7 @@ import { store } from '../store.js';
 import {
   assessRisk,
   writeNvs,
+  writeFilesystem,
   erasePartition,
   exportBytes,
   readFlashRegion,
@@ -361,17 +362,7 @@ export class EspInspector extends HTMLElement {
         analysis.type === 'littlefs' ||
         analysis.type === 'fat'
       ) {
-        const tree = /** @type {import('./esp-fs-tree.js').EspFsTree} */ (
-          document.createElement('esp-fs-tree')
-        );
-        container.append(tree);
-        // The element reads its data through a method rather than an attribute:
-        // an FsImage carries lazy `read()` closures over the buffer, and those
-        // do not survive being stringified into the DOM.
-        tree.show(
-          /** @type {import('../esp-flashjs.js').FsImage} */ (analysis.model),
-          target.partition?.label ?? 'fs',
-        );
+        container.append(this._fsTree(analysis, target));
       } else if (analysis.type === 'raw' || analysis.type === 'encrypted?') {
         container.append(rawSummary(analysis));
       } else {
@@ -399,6 +390,49 @@ export class EspInspector extends HTMLElement {
     if (target.partition) container.append(this._destructiveActions(target.partition, target.data));
 
     body.replaceChildren(container);
+  }
+
+  /**
+   * @param {import('../esp-flashjs.js').AnalysisResult} analysis
+   * @param {any} target
+   * @returns {HTMLElement}
+   */
+  _fsTree(analysis, target) {
+    const tree = /** @type {import('./esp-fs-tree.js').EspFsTree} */ (
+      document.createElement('esp-fs-tree')
+    );
+    const partition = target.partition;
+    const state = store.getState();
+    // Writing needs somewhere to write to. An image opened from a file has no
+    // partition behind it, and the stub is what makes erase and write possible
+    // at all, so both are required before the editing controls appear.
+    const canWrite = Boolean(
+      partition && state.device.status === 'connected' && state.device.usingStub,
+    );
+
+    // The element reads its data through a method rather than an attribute: an
+    // FsImage carries lazy `read()` closures over the buffer, and those do not
+    // survive being stringified into the DOM.
+    tree.show(
+      /** @type {import('../esp-flashjs.js').FsImage} */ (analysis.model),
+      partition?.label ?? 'fs',
+      {
+        onApply: canWrite
+          ? (edited) => {
+              openConfirm({
+                partition,
+                reasons: assessRisk(partition.offset, partition.size).reasons,
+                detail: t('confirm.fsChanges'),
+                hasBackup: [...store.getState().buffers.values()].some(
+                  (b) => b.partitionLabel === partition.label,
+                ),
+                onConfirm: () => void writeFilesystem(partition, edited, target.data),
+              });
+            }
+          : undefined,
+      },
+    );
+    return tree;
   }
 
   /**

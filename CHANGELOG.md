@@ -42,12 +42,24 @@ library against fixtures and a mock the library itself produced.
   all-or-nothing, so a link that drops bytes could never deliver a large range
   however often it was retried. `read()` now splits the range and retries each
   piece.
-- **A link-speed control in the web app**, and a filesystem tree, an NVS
-  editor and a binary diff view in the inspector.
+- **Filesystem editing and rebuilding.** `FsStore` holds an editable tree and
+  `buildFs` writes it back as a SPIFFS, LittleFS or FAT image at the geometry
+  it came from. Each format is checked by something a round trip cannot fake:
+  SPIFFS is read back through its object indexes the way a device reads it,
+  LittleFS is walked along the tail chain the block allocator follows, and FAT
+  carries the wear-levelling state over rather than regenerating it.
+  `checkFsStore` says what the target format cannot hold before anything is
+  built.
+- **A link-speed control in the web app**, and a filesystem tree with add,
+  replace, delete and write-back, an NVS editor and a binary diff view in the
+  inspector.
 - **Documentation for writing analyzers and transports**, both with worked
   examples that are executed by the test suite.
 - **`tools/hardware-check.mjs`**, which drives the library against a board and
-  compares the result with an esptool capture.
+  compares the result with an esptool capture. `--rebuild` goes further: it
+  edits each filesystem, writes it back, resets the board and reads the chip's
+  own driver reporting what it found — the only check that can establish that
+  an image this library writes is one a device will mount.
 
 ### Fixed
 
@@ -70,10 +82,23 @@ library against fixtures and a mock the library itself produced.
   examined.
 - **A partition table's `encrypted` flag was treated as evidence.** It is a
   policy bit that means nothing on a chip with encryption disabled.
+- **A FAT volume whose first directory entry had a long name read as empty.**
+  The wear-levelling spare is located by finding real directory entries where
+  the boot sector says the root directory is, and that test insisted on an 8.3
+  name — but a long-name entry is UTF-16, so detection failed outright and the
+  volume was reported as having no valid layout.
+- **LittleFS user attributes were matched by exact type.** The type is 0x300
+  plus a byte the application chose, so none of the real ones matched; ESP-IDF
+  stores the modification time under `'t'`, which is 0x374.
 
 ### Known limitations
 
-- Filesystems are read-only. Rebuilding is not implemented.
+- **Rebuilding regenerates at the original geometry.** Formatting a filesystem
+  to arbitrary parameters is out of scope, FAT needs the image it came from,
+  and modification times are not carried over.
+- Long FAT file names are **not covered by a committed fixture**: nothing the
+  provisioning sketch writes has a name that needs them. `hardware-check.mjs
+  --rebuild` exercises them against a board instead.
 - `fetchStub` needs a browser: it asks `fetch()` for a URL beside the module,
   and Node's fetch does not implement `file:`. Outside a browser, call
   `registerStub`. See [docs/transports.md](./docs/transports.md).

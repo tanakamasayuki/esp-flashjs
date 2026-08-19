@@ -270,5 +270,20 @@
   "nvs.notFlashEncrypted": "Flash encryption does not cover NVS. This partition is stored in the clear unless NVS encryption was enabled separately, with its own key in an nvs_keys partition.",
   "nvs.likelyEncrypted": "No readable pages, and the bytes have no structure. This is more likely NVS encryption than an empty partition.",
   "protocol.chipRevision": "Silicon revision {revision}; using the {stub} stub.",
-  "protocol.revisionUnknown": "Could not read the silicon revision ({message}); using the default stub."
+  "protocol.revisionUnknown": "Could not read the silicon revision ({message}); using the default stub.",
+  "fs.add": "Add file…",
+  "fs.add.hint": "Adds a file at the root of this filesystem. Nothing is written until you press write back.",
+  "fs.replace": "Replace",
+  "fs.delete": "Delete",
+  "fs.apply": "Write back",
+  "fs.apply.hint": "Rebuilds the whole partition image from these edits and writes it, after backing up what is there now.",
+  "fs.revert": "Discard edits",
+  "fs.pending": "{count} pending change(s)",
+  "confirm.fsChanges": "The filesystem is rebuilt and the whole partition rewritten. Free space is zeroed, so deleted files do not survive.",
+  "error.FS_CAPACITY": "The files do not fit in the partition.",
+  "error.FS_PATH": "A path cannot be stored in this filesystem.",
+  "fs.rebuildIncomplete": "{count} file(s) were only partly recovered from this image. Rebuilding writes the gaps down as zeros, which makes them permanent: {paths}",
+  "fs.spiffsNoDirectories": "SPIFFS has no directories, so {count} empty one(s) will not survive the rebuild: {paths}",
+  "fs.spiffsNameTooLong": "{count} path(s) are longer than the {limit} bytes SPIFFS can name: {paths}",
+  "fs.fatIllegalName": "{count} name(s) use characters FAT cannot record: {paths}"
 }

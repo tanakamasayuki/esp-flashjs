@@ -177,6 +177,50 @@ Helpers and constants: `spiffsLookupPages`, `SPIFFS_FLAG`, `SPIFFS_GEOMETRIES`,
 `ctzIndexOf`, `ctzPointerCount`, `LFS_TYPE`, `LITTLEFS_MAGIC`; `parseBpb`,
 `readFatEntry`, `wlMapSector`, `FAT_ATTR`, `FAT_ATTR_LONG_NAME`.
 
+### Editing and rebuilding a filesystem
+
+| Name | Notes |
+| --- | --- |
+| `FsStore.from(image)` | A full copy of a parsed image, editable |
+| `new FsStore(type, geometry)` | An empty one |
+| `buildFs(store, { size, source, selfCheck })` | → `Uint8Array`, in the store's own format |
+| `checkFsStore(store, type)` | → `Issue[]`: what the target format cannot represent. Capacity is not included; that is a build-time throw |
+| `normalizeFsPath(path)` | Absolute, no trailing slash. Throws `FsPathError` on `..` |
+
+`FsStore` members: `type`, `geometry`, `entries`, `paths`, `directories`,
+`size`, `byteLength`, `incomplete`, `has(path)`, `read(path)`,
+`write(path, contents)`, `mkdir(path)`, `delete(path)`, `rename(from, to)`,
+`clone()`.
+
+`incomplete` lists paths that were only partly recoverable from the source
+image. They read back with zeros where the data was missing, so rebuilding
+makes the gap permanent — which is what `checkFsStore` warns about.
+
+**A rebuild regenerates at the original geometry.** It does not format a
+filesystem to arbitrary parameters, and it compacts: the result holds the same
+files and is not the same bytes. Modification times are not carried over.
+
+Per-format builders, if you need to override geometry:
+
+| Name | Notes |
+| --- | --- |
+| `buildSpiffs(store, { size, pageSize, blockSize, objNameLen, metaLength, selfCheck })` | — |
+| `buildLittlefs(store, { size, blockSize, progSize, version, nameMax, fileMax, attrMax, inlineMax, selfCheck })` | — |
+| `buildFat(store, { source, date, time, selfCheck })` | `source` is required: the wear-levelling state at the end of the partition can be carried over but never regenerated |
+
+The self-checks, which are also useful on their own:
+
+| Name | Notes |
+| --- | --- |
+| `readSpiffsViaIndex(data, options)` | → `FsImage`, read through the object indexes the way a device does, rather than by the page sweep `parseSpiffs` uses. The two disagree exactly when the indexes are wrong |
+| `littlefsTraverse(data, { blockSize })` | → `{ blocks, pairs, issues }`, following the tail chain the block allocator follows. A pair that is off the chain reads fine and is handed out as free space on the next write |
+| `verifyFsBuild(image, expected, format)` | Throws unless a rebuilt image reads back exactly as asked |
+
+More constants: `spiffsMagic`, `spiffsIndexOffsets`, `SPIFFS_META_LENGTH`,
+`SPIFFS_OBJ_NAME_LEN`, `SPIFFS_DATA_PAGE_FLAGS`, `SPIFFS_INDEX_PAGE_FLAGS`;
+`ctzBlockCount`, `LITTLEFS_PROG_SIZE`, `LITTLEFS_VERSION`; `longNameRecords`,
+`shortNameFor`, `shortNameChecksum`.
+
 ---
 
 ## Analysis
@@ -239,6 +283,8 @@ is what lets an application supply its own wording.
 | `AlignmentError` | `BAD_ALIGNMENT` |
 | `ChecksumError` | `CHECKSUM_MISMATCH` |
 | `CommandFailedError` | `COMMAND_FAILED` |
+| `FsCapacityError` | `FS_CAPACITY` |
+| `FsPathError` | `FS_PATH` |
 | `InvalidMagicError` | `INVALID_MAGIC` |
 | `NvsCapacityError` | `NVS_CAPACITY` |
 | `OperationAbortedError` | `ABORTED` |
