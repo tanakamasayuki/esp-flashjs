@@ -17,7 +17,11 @@
 import { t, onLocaleChange, tIssue } from '../i18n.js';
 import { formatByteSize, FsStore, checkFsStore } from '../esp-flashjs.js';
 import { exportBytes } from '../actions.js';
-import { downloadName } from '../format-values.js';
+import { archiveName, decodeTextFile, downloadName } from '../format-values.js';
+import { zip } from '../zip.js';
+
+/** Above this a text box is the wrong instrument, and a frozen tab. */
+const TEXT_LIMIT = 256 * 1024;
 
 const TEMPLATE = `
 <style>
@@ -53,6 +57,16 @@ const TEMPLATE = `
   .empty { color: var(--fg-muted); padding: 8px; }
   ul.issues { margin: 8px 0 0; padding-left: 18px; color: var(--warn); font-size: 12px; }
   ul.issues li.error { color: var(--error, #f85149); }
+  tr.editor > td { padding: 8px; background: var(--bg-button); }
+  textarea {
+    width: 100%; min-height: 220px; box-sizing: border-box; resize: vertical;
+    background: var(--bg); color: var(--fg); border: 1px solid var(--border);
+    border-radius: 4px; padding: 6px 8px;
+    font-family: var(--mono, ui-monospace, monospace); font-size: 12px; line-height: 1.5;
+  }
+  .editor-bar { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+  .editor-bar .where { color: var(--fg-muted); font-size: 11px;
+                       font-family: var(--mono, ui-monospace, monospace); }
 </style>
 <div class="toolbar" id="toolbar"></div>
 <div id="body"></div>
@@ -82,6 +96,18 @@ export class EspFsTree extends HTMLElement {
     this._changed = new Map();
     /** @type {((store: FsStore) => void)|undefined} */
     this._onApply = undefined;
+    /** Path whose text editor is open, if any. @type {string|null} */
+    this._open = null;
+    /**
+     * Whether a path holds text, worked out once.
+     *
+     * Deciding needs the file decoded, and this is consulted while drawing
+     * every row. Without the cache, one render of a filesystem with a hundred
+     * files decoded a hundred files — on every store update.
+     *
+     * @type {Map<string, boolean>}
+     */
+    this._isText = new Map();
     /** @type {Array<() => void>} */
     this._cleanup = [];
   }
@@ -105,11 +131,20 @@ export class EspFsTree extends HTMLElement {
    *   controls off rather than letting them build up changes with no exit.
    */
   show(image, name, options = {}) {
+    // Edits are dropped only when the image itself is different. Being shown
+    // the same bytes again is what happens on every unrelated store update —
+    // a log line, a device state change — and discarding a half-finished set
+    // of edits for that would be indistinguishable from losing them.
+    const replaced = image !== this._image;
     this._image = image;
     this._name = name;
     this._onApply = options.onApply;
-    this._store = null;
-    this._changed.clear();
+    if (replaced) {
+      this._store = null;
+      this._changed.clear();
+      this._open = null;
+      this._isText.clear();
+    }
     this._render();
   }
 
@@ -146,7 +181,7 @@ export class EspFsTree extends HTMLElement {
     const saveAll = document.createElement('button');
     saveAll.textContent = t('fs.extractAll', { count: files.length });
     saveAll.disabled = files.length === 0;
-    saveAll.addEventListener('click', () => this._extractAll(files));
+    saveAll.addEventListener('click', () => void this._extractAll(files));
     toolbar.append(saveAll);
 
     if (this._onApply) toolbar.append(...this._editControls());
@@ -330,6 +365,7 @@ export class EspFsTree extends HTMLElement {
 
       tr.append(this._rowActions(row));
       table.append(tr);
+      if (this._open === row.path && !row.directory) table.append(this._editorRow(row));
     }
     return table;
   }
@@ -346,8 +382,19 @@ export class EspFsTree extends HTMLElement {
     if (!row.directory) {
       const save = document.createElement('button');
       save.textContent = t('fs.extract');
-      save.addEventListener('click', () => exportBytes(row.read(), downloadName(this._name, row.path)));
+      save.addEventListener('click', () => exportBytes(row.read(), downloadName(row.path)));
       cell.append(save);
+    }
+
+    if (!row.directory && this._looksTextual(row)) {
+      const open = document.createElement('button');
+      open.textContent = this._open === row.path ? t('fs.close') : t('fs.view');
+      open.title = this._onApply ? t('fs.view.hint') : t('fs.view.readonly');
+      open.addEventListener('click', () => {
+        this._open = this._open === row.path ? null : row.path;
+        this._render();
+      });
+      cell.append(open);
     }
 
     if (this._onApply) {
@@ -363,6 +410,86 @@ export class EspFsTree extends HTMLElement {
       cell.append(remove);
     }
     return cell;
+  }
+
+  /**
+   * Whether a row is worth offering a text editor for.
+   *
+   * Offered only for something that really is text. A decoder that substituted
+   * replacement characters would cheerfully "open" a firmware image, and
+   * saving that back would replace every byte it could not read.
+   *
+   * @param {ReturnType<EspFsTree['_rows']>[number]} row
+   * @returns {boolean}
+   */
+  _looksTextual(row) {
+    // The size is checked first so a multi-megabyte file is never decoded just
+    // to find out it is too big to edit.
+    if (row.size > TEXT_LIMIT) return false;
+    const key = `${row.path}:${row.size}:${row.state}`;
+    let known = this._isText.get(key);
+    if (known === undefined) {
+      known = decodeTextFile(row.read(), TEXT_LIMIT) !== null;
+      this._isText.set(key, known);
+    }
+    return known;
+  }
+
+  /**
+   * The expanded text editor for one file.
+   *
+   * @param {ReturnType<EspFsTree['_rows']>[number]} row
+   * @returns {HTMLElement}
+   */
+  _editorRow(row) {
+    const tr = document.createElement('tr');
+    tr.className = 'editor';
+    const cell = document.createElement('td');
+    cell.colSpan = 4;
+    tr.append(cell);
+
+    const area = document.createElement('textarea');
+    area.value = decodeTextFile(row.read(), TEXT_LIMIT) ?? '';
+    area.spellcheck = false;
+    area.readOnly = !this._onApply;
+    cell.append(area);
+
+    const bar = document.createElement('div');
+    bar.className = 'editor-bar';
+
+    if (this._onApply) {
+      const save = document.createElement('button');
+      save.className = 'primary';
+      save.textContent = t('fs.saveText');
+      save.addEventListener('click', () => {
+        const store = this._edit();
+        const existed = store.has(row.path);
+        store.write(row.path, area.value);
+        this._changed.set(row.path, existed ? 'modified' : 'added');
+        this._isText.clear();
+        this._open = null;
+        this._render();
+      });
+      bar.append(save);
+    }
+
+    const close = document.createElement('button');
+    close.textContent = t('fs.close');
+    close.addEventListener('click', () => {
+      this._open = null;
+      this._render();
+    });
+    bar.append(close);
+
+    const where = document.createElement('span');
+    where.className = 'where';
+    // Saying it out loud, because a textarea that saves instantly is the
+    // expectation everywhere else and this one deliberately does not.
+    where.textContent = this._onApply ? t('fs.saveText.hint') : t('fs.view.readonly');
+    bar.append(where);
+
+    cell.append(bar);
+    return tr;
   }
 
   /**
@@ -382,6 +509,7 @@ export class EspFsTree extends HTMLElement {
       const existed = store.has(path) || this._changed.get(path) === 'deleted';
       store.write(path, bytes);
       this._changed.set(path, existed ? 'modified' : 'added');
+      this._isText.clear();
       this._render();
     });
     input.click();
@@ -404,14 +532,24 @@ export class EspFsTree extends HTMLElement {
     this._render();
   }
 
-  /** @param {ReturnType<EspFsTree['_rows']>} rows */
-  _extractAll(rows) {
-    // One download per file rather than an archive: bundling would mean
-    // shipping a zip encoder, and the whole library has no runtime
-    // dependencies. Browsers rate-limit bursts of downloads, so this is spaced.
-    rows.forEach((row, i) => {
-      setTimeout(() => exportBytes(row.read(), downloadName(this._name, row.path)), i * 120);
-    });
+  /**
+   * Packs everything into one archive.
+   *
+   * Directories are included as entries of their own so an empty one survives
+   * — which for a SPIFFS image versus the LittleFS one beside it is a real
+   * difference, and the whole reason someone might be looking.
+   *
+   * @param {ReturnType<EspFsTree['_rows']>} rows
+   */
+  async _extractAll(rows) {
+    const entries = rows
+      .filter((row) => row.state !== 'deleted')
+      .map((row) => ({
+        path: row.path,
+        directory: row.directory,
+        data: row.directory ? undefined : row.read(),
+      }));
+    exportBytes(await zip(entries), archiveName(this._name));
   }
 }
 

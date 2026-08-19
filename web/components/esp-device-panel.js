@@ -38,6 +38,8 @@ const TEMPLATE = `
     font: inherit;
   }
   label.speed select:disabled { opacity: 0.5; cursor: not-allowed; }
+  .speed-note { color: var(--fg-muted); font-size: 11px; line-height: 1.5;
+                flex-basis: 100%; margin: -2px 0 0; }
   /* Vertical space is scarce: flow the facts inline and wrap, rather than
      spending one row per field. */
   .facts {
@@ -149,6 +151,15 @@ export class EspDevicePanel extends HTMLElement {
       speed.append(actual);
     }
     controls.append(speed);
+
+    // Said out loud rather than left in the tooltip. The rule here is not the
+    // one people expect — faster is not safer, and it is not even ordered —
+    // so it has to be readable without hovering, which on a touch screen
+    // never happens at all.
+    const note = document.createElement('p');
+    note.className = 'speed-note';
+    note.textContent = t('device.baudRate.note');
+    controls.append(note);
 
     const statusText = document.createElement('span');
     statusText.className = 'status';

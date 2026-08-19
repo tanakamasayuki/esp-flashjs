@@ -53,7 +53,7 @@
  * @property {Map<string, 'erased'|'zeroed'|'data'|'unreadable'>} partitionStates
  * @property {{kind: 'partition'|'buffer'|'region'|null, id: string|null}} selection
  * @property {Map<string, Buffer>} buffers
- * @property {{tab: 'analyze'|'hex'|'diff'}} inspector
+ * @property {{tab: 'analyze'|'hex'}} inspector
  * @property {{active: boolean, phase: string, done: number, total: number, cancel: (() => void)|null}} busy
  * @property {LogEntry[]} log
  * @property {object|null} dialog

@@ -705,7 +705,7 @@ export function select(kind, id) {
   store.setState({ selection: { kind, id } });
 }
 
-/** @param {'analyze'|'hex'|'diff'} tab */
+/** @param {'analyze'|'hex'} tab */
 export function setInspectorTab(tab) {
   store.setState({ inspector: { tab } });
 }
@@ -731,6 +731,18 @@ export function buildCurrentPartitionTable() {
  * @returns {Promise<T>}
  */
 async function withBusy(controller, operation) {
+  // The library queues concurrent operations rather than letting them corrupt
+  // each other, so this is not what keeps the link safe. What it prevents is
+  // worse in its own way: a destructive write confirmed against what the
+  // device looked like two minutes ago, and a progress bar and cancel button
+  // that can only belong to one operation at a time. Refusing here is honest,
+  // and the buttons are disabled anyway, so reaching this is unusual.
+  if (store.getState().busy.active) {
+    throw Object.assign(new Error('Another operation is already running.'), {
+      code: 'DEVICE_BUSY',
+    });
+  }
+
   store.setState({
     busy: { active: true, phase: '', done: 0, total: 0, cancel: () => controller.abort() },
   });

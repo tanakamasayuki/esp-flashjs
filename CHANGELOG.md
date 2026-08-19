@@ -51,9 +51,14 @@ library against fixtures and a mock the library itself produced.
   `checkFsStore` says what the target format cannot hold before anything is
   built.
 - **A link-speed control in the web app**, and a filesystem tree with add,
-  replace, delete and write-back, an NVS editor and a binary diff view in the
-  inspector. The diff compares whatever is selected against any other copy
-  loaded, so selecting a different region changes what it shows.
+  replace, delete and write-back, plus an NVS editor, in the inspector.
+- **Extracting a whole filesystem produces one ZIP**, with the real paths and
+  empty directories intact, instead of a burst of downloads whose names had the
+  directory folded into them. No dependency: a ZIP is a few little-endian
+  structs, the checksum is the CRC-32 already here, and the compression is
+  `CompressionStream`.
+- **Text files can be read and edited in place**, for anything that decodes as
+  strict UTF-8 and is under 256 KB. Nothing reaches the device until write-back.
 - **Documentation for writing analyzers and transports**, both with worked
   examples that are executed by the test suite.
 - **`tools/hardware-check.mjs`**, which drives the library against a board and
@@ -83,10 +88,18 @@ library against fixtures and a mock the library itself produced.
   examined.
 - **A partition table's `encrypted` flag was treated as evidence.** It is a
   policy bit that means nothing on a chip with encryption disabled.
-- **The diff view ignored the selection and forgot its own.** It compared two
-  buffers, chosen when it was created — and it was recreated on every store
-  update, so picking a comparison and then reading the other half of it undid
-  the choice. Selecting a different region appeared to do nothing at all.
+- **Two operations could run on the link at once.** Nothing serialised them,
+  so starting a write while a read was still going had each conversation
+  reading the other's frames: a checksum mismatch, a run of timeouts, and a
+  device that appeared to have stopped responding — indistinguishable from a
+  bad cable. `EspLoader` now queues whole operations, and the web app refuses
+  to start a second one rather than queuing a destructive write behind a long
+  read.
+- **An extracted file did not keep its own name.** `hello.txt` arrived as
+  `spiffs_hello.txt`; the collision that was guarding against is one browsers
+  already handle by appending a number.
+- **The filesystem tree lost pending edits on any unrelated update.** The
+  element was rebuilt on every render and its edits lived in the element.
 - **An erased NVS entry struck through the word "erased".** The strike was set
   on the table cell, and a text decoration on an ancestor is drawn across
   everything inside it, so the one word explaining the row was the hardest part
@@ -99,6 +112,14 @@ library against fixtures and a mock the library itself produced.
 - **LittleFS user attributes were matched by exact type.** The type is 0x300
   plus a byte the application chose, so none of the real ones matched; ESP-IDF
   stores the modification time under `'t'`, which is 0x374.
+
+### Removed
+
+- **The diff view.** Every other tab in the inspector answers "what is this
+  region I selected?"; this one answered "how do these two things differ?",
+  which is a different question about a different subject, and nothing on
+  screen explained why it was there. `diffBinary`, `diffBinaryStream` and
+  `diffSummary` are unchanged in the API.
 
 ### Known limitations
 

@@ -13,7 +13,6 @@ import './components/esp-flash-map.js';
 import './components/esp-file-list.js';
 import './components/esp-fs-tree.js';
 import './components/esp-nvs-tree.js';
-import './components/esp-diff-view.js';
 import './components/esp-inspector.js';
 import './components/esp-log.js';
 import './components/esp-confirm-dialog.js';

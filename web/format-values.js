@@ -90,17 +90,56 @@ export function parseValue(type, text) {
 }
 
 /**
- * Flattens a filesystem path into something a download can be named.
+ * The name a single extracted file is saved under.
  *
- * A slash in a download name is not a directory — browsers either strip it or
- * refuse the download — so separators are folded into the name. The prefix
- * keeps two images' worth of `hello.txt` apart in a downloads folder.
+ * Its own name, not a decorated one. Prefixing with the partition and folding
+ * the directories into the filename kept two images' worth of `hello.txt`
+ * apart, but it meant `hello.txt` never once arrived called `hello.txt` — and
+ * the collision it was avoiding is one browsers already handle by appending a
+ * number. Extracting everything at once produces a ZIP, which keeps the real
+ * paths, so the case this was solving for has a better answer now.
  *
- * @param {string} prefix
+ * A slash cannot survive: browsers either strip it or refuse the download.
+ *
  * @param {string} path
  * @returns {string}
  */
-export function downloadName(prefix, path) {
-  const flat = path.replace(/^\//, '').replace(/\//g, '_') || 'file';
-  return `${prefix}_${flat}`;
+export function downloadName(path) {
+  const name = path.slice(path.lastIndexOf('/') + 1);
+  // Reserved on Windows and awkward everywhere; a filesystem image can carry
+  // names a host will not.
+  return name.replace(/[\\/:*?"<>|]/g, '_') || 'file';
+}
+
+/**
+ * The name for a whole extracted filesystem.
+ *
+ * @param {string} prefix Usually the partition label.
+ * @returns {string}
+ */
+export function archiveName(prefix) {
+  return `${prefix.replace(/[\\/:*?"<>|]/g, '_') || 'fs'}-files.zip`;
+}
+
+/**
+ * The text in a file, or null when it is not text.
+ *
+ * Strict UTF-8 is most of the test — a decoder that substitutes replacement
+ * characters would happily "decode" a firmware image and offer it for editing,
+ * and saving that back would replace every undecodable byte with U+FFFD. A NUL
+ * rules a file out too: it decodes cleanly and means the file is not text.
+ *
+ * @param {Uint8Array} bytes
+ * @param {number} [limit] Above this, no. A text box is not a hex editor, and
+ *   a megabyte in a textarea is a frozen tab.
+ * @returns {string|null}
+ */
+export function decodeTextFile(bytes, limit = 256 * 1024) {
+  if (bytes.length > limit) return null;
+  try {
+    const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    return text.includes('\0') ? null : text;
+  } catch {
+    return null;
+  }
 }

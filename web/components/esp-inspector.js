@@ -23,22 +23,19 @@ import {
 } from '../actions.js';
 import './esp-hex-viewer.js';
 import './esp-nvs-tree.js';
-import './esp-diff-view.js';
 import { openConfirm } from './esp-confirm-dialog.js';
 
 /**
- * Analysis comes first and carries the metadata with it.
+ * The inspector's tabs.
  *
- * A separate "Info" tab put offset and size in front of the thing people
- * actually open the inspector for. The details are still here, just below the
- * analysis instead of ahead of it.
+ * Both answer the same question about the same thing — what is this region I
+ * selected? — one in prose and one in bytes. A byte-comparison tab used to sit
+ * beside them and did not: it took two subjects rather than one, so nothing on
+ * screen explained why it was there or what it was showing.
  *
- * The diff tab is the odd one out: it compares two buffers rather than
- * describing the current selection, so it stays available whatever is selected.
- *
- * @type {Array<'analyze'|'hex'|'diff'>}
+ * @type {Array<'analyze'|'hex'>}
  */
-const TABS = ['analyze', 'hex', 'diff'];
+const TABS = ['analyze', 'hex'];
 
 const TEMPLATE = `
 <style>
@@ -94,8 +91,17 @@ export class EspInspector extends HTMLElement {
     this._cleanup = [];
     /** @type {import('./esp-hex-viewer.js').EspHexViewer|null} */
     this._hex = null;
-    /** @type {import('./esp-diff-view.js').EspDiffView|null} */
-    this._diff = null;
+    /**
+     * The filesystem tree, kept alive while it is showing the same image.
+     *
+     * Unlike the NVS tree, whose edits live in the `NvsStore` the analysis
+     * holds, this one keeps them in the element. Rebuilding it on every render
+     * would throw away a set of pending file edits whenever anything else in
+     * the app changed.
+     *
+     * @type {{model: unknown, element: import('./esp-fs-tree.js').EspFsTree}|null}
+     */
+    this._fs = null;
   }
 
   connectedCallback() {
@@ -106,6 +112,9 @@ export class EspInspector extends HTMLElement {
       store.subscribe((s) => s.inspector.tab, rerender),
       store.subscribe((s) => s.buffers, rerender),
       store.subscribe((s) => s.device.usingStub, rerender),
+      // Every action here talks to the device, and none of them may start
+      // while another is running.
+      store.subscribe((s) => s.busy.active, rerender),
       onLocaleChange(rerender),
     );
     this._render();
@@ -197,48 +206,18 @@ export class EspInspector extends HTMLElement {
       tabsEl.append(button);
     }
 
-    // The diff is the one tab that still has something to say with nothing
-    // selected: two buffers can be compared on their own. Every other tab
-    // describes the selection and has nothing to describe.
-    if (state.inspector.tab === 'diff') {
-      this._hex = null;
-      this._renderDiff(bodyEl, target);
-      return;
-    }
-
     if (!target) {
       this._hex = null;
-      this._diff = null;
       bodyEl.innerHTML = `<p class="empty">${escapeHtml(t('inspector.empty'))}</p>`;
       return;
     }
 
     if (state.inspector.tab === 'hex') {
-      this._diff = null;
       this._renderHex(bodyEl, target);
     } else {
       this._hex = null;
-      this._diff = null;
       this._renderAnalysis(bodyEl, target);
     }
-  }
-
-  /**
-   * @param {HTMLElement} body
-   * @param {ReturnType<EspInspector['_target']>} target
-   */
-  _renderDiff(body, target) {
-    // Reused across renders, like the hex viewer. Rebuilding it would reset
-    // the two dropdowns to their defaults on every unrelated store update —
-    // and since reading a partition is such an update, choosing what to
-    // compare and then reading the other half undid the choice.
-    if (!this._diff || this._diff.parentElement !== body) {
-      this._diff = /** @type {import('./esp-diff-view.js').EspDiffView} */ (
-        document.createElement('esp-diff-view')
-      );
-      body.replaceChildren(this._diff);
-    }
-    this._diff.show(target);
   }
 
   /**
@@ -295,7 +274,8 @@ export class EspInspector extends HTMLElement {
    */
   _readActions(target) {
     const state = store.getState();
-    const canRead = state.device.status === 'connected' && state.device.usingStub;
+    const canRead =
+      state.device.status === 'connected' && state.device.usingStub && !state.busy.active;
 
     const wrap = document.createElement('div');
     wrap.className = 'actions';
@@ -425,9 +405,15 @@ export class EspInspector extends HTMLElement {
    * @returns {HTMLElement}
    */
   _fsTree(analysis, target) {
-    const tree = /** @type {import('./esp-fs-tree.js').EspFsTree} */ (
-      document.createElement('esp-fs-tree')
-    );
+    if (!this._fs || this._fs.model !== analysis.model) {
+      this._fs = {
+        model: analysis.model,
+        element: /** @type {import('./esp-fs-tree.js').EspFsTree} */ (
+          document.createElement('esp-fs-tree')
+        ),
+      };
+    }
+    const tree = this._fs.element;
     const partition = target.partition;
     const state = store.getState();
     // Writing needs somewhere to write to. An image opened from a file has no
@@ -507,8 +493,9 @@ export class EspInspector extends HTMLElement {
    */
   _destructiveActions(partition, data) {
     const state = store.getState();
-    const canRead = state.device.status === 'connected' && state.device.usingStub;
-    const connected = state.device.status === 'connected';
+    const busy = state.busy.active;
+    const canRead = state.device.status === 'connected' && state.device.usingStub && !busy;
+    const connected = state.device.status === 'connected' && !busy;
 
     const wrap = document.createElement('div');
     wrap.className = 'actions danger-group';

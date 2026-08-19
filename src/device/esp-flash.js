@@ -75,6 +75,13 @@ export class EspFlash {
    */
   async getInfo({ refresh = false } = {}) {
     if (this.info && !refresh) return this.info;
+    return this.loader.exclusive(() => this._getInfo(), { phase: 'connecting' });
+  }
+
+  /**
+   * @returns {Promise<DeviceInfo>}
+   */
+  async _getInfo() {
     this.info = await readDeviceInfo(this.loader);
     this.flashSize = this.info.flashSize;
     return this.info;
@@ -89,7 +96,28 @@ export class EspFlash {
    * @returns {Promise<Uint8Array>}
    * @throws {UnsupportedOperationError} Without the stub loaded.
    */
-  async read(
+  async read(address, size, options = {}) {
+    return this.loader.exclusive(() => this._read(address, size, options), {
+      signal: options.signal,
+      phase: 'reading',
+    });
+  }
+
+  /**
+   * The body of {@link EspFlash#read}, without taking the link.
+   *
+   * Every public operation locks the link and then calls one of these. The
+   * lock is not reentrant, so an operation built out of other operations —
+   * `dump`, `probePartitions`, a verified `write` — has to reach the
+   * implementation rather than the entry point, or it would wait forever for
+   * a release only it can perform.
+   *
+   * @param {number} address
+   * @param {number} size
+   * @param {OperationOptions} [options]
+   * @returns {Promise<Uint8Array>}
+   */
+  async _read(
     address,
     size,
     { onProgress, signal, chunkSize = READ_CHUNK_SIZE, attempts = READ_ATTEMPTS } = {},
@@ -210,7 +238,19 @@ export class EspFlash {
    * @param {OperationOptions & {probeBytes?: number}} [options]
    * @returns {Promise<Map<string, 'erased'|'zeroed'|'data'|'unreadable'>>} Keyed by label.
    */
-  async probePartitions(partitions, { probeBytes = FLASH_SECTOR_SIZE, onProgress, signal } = {}) {
+  async probePartitions(partitions, options = {}) {
+    return this.loader.exclusive(() => this._probePartitions(partitions, options), {
+      signal: options.signal,
+      phase: 'reading',
+    });
+  }
+
+  /**
+   * @param {import('../format/partition.js').Partition[]} partitions
+   * @param {OperationOptions & {probeBytes?: number}} [options]
+   * @returns {Promise<Map<string, 'erased'|'zeroed'|'data'|'unreadable'>>}
+   */
+  async _probePartitions(partitions, { probeBytes = FLASH_SECTOR_SIZE, onProgress, signal } = {}) {
     /** @type {Map<string, 'erased'|'zeroed'|'data'|'unreadable'>} */
     const states = new Map();
     if (!this.loader.isStub) return states;
@@ -219,7 +259,7 @@ export class EspFlash {
     for (const [index, p] of partitions.entries()) {
       throwIfAborted(signal, 'reading');
       try {
-        const head = await this.read(p.offset, Math.min(probeBytes, p.size), { signal });
+        const head = await this._read(p.offset, Math.min(probeBytes, p.size), { signal });
         states.set(p.label, classifyRegion(head));
       } catch (error) {
         if (/** @type {Error & {code?: string}} */ (error).code === 'ABORTED') throw error;
@@ -240,7 +280,20 @@ export class EspFlash {
    * @param {OperationOptions & {compress?: boolean, verify?: boolean}} [options]
    * @returns {Promise<void>}
    */
-  async write(address, data, { onProgress, signal, compress = true, verify = false } = {}) {
+  async write(address, data, options = {}) {
+    return this.loader.exclusive(() => this._write(address, data, options), {
+      signal: options.signal,
+      phase: 'writing',
+    });
+  }
+
+  /**
+   * @param {number} address
+   * @param {Uint8Array} data
+   * @param {OperationOptions & {compress?: boolean, verify?: boolean}} [options]
+   * @returns {Promise<void>}
+   */
+  async _write(address, data, { onProgress, signal, compress = true, verify = false } = {}) {
     AlignmentError.check('Write address', address, 4);
     this.checkRange(address, data.length);
     if (data.length === 0) return;
@@ -288,7 +341,7 @@ export class EspFlash {
     progress.finish();
 
     if (verify) {
-      const result = await this.verify(address, data);
+      const result = await this._verify(address, data);
       if (!result.ok) {
         throw new UnsupportedOperationError(
           'VERIFY_FAILED',
@@ -308,7 +361,20 @@ export class EspFlash {
    * @returns {Promise<void>}
    * @throws {UnsupportedOperationError} Without the stub loaded.
    */
-  async eraseRegion(address, size, { signal } = {}) {
+  async eraseRegion(address, size, options = {}) {
+    return this.loader.exclusive(() => this._eraseRegion(address, size, options), {
+      signal: options.signal,
+      phase: 'erasing',
+    });
+  }
+
+  /**
+   * @param {number} address
+   * @param {number} size
+   * @param {OperationOptions} [options]
+   * @returns {Promise<void>}
+   */
+  async _eraseRegion(address, size, { signal } = {}) {
     if (!this.loader.isStub) throw UnsupportedOperationError.requiresStub('Erase region');
     AlignmentError.check('Erase address', address, FLASH_SECTOR_SIZE);
     AlignmentError.check('Erase size', size, FLASH_SECTOR_SIZE);
@@ -329,7 +395,18 @@ export class EspFlash {
    * @param {OperationOptions} [options]
    * @returns {Promise<void>}
    */
-  async eraseAll({ signal } = {}) {
+  async eraseAll(options = {}) {
+    return this.loader.exclusive(() => this._eraseAll(options), {
+      signal: options.signal,
+      phase: 'erasing',
+    });
+  }
+
+  /**
+   * @param {OperationOptions} [options]
+   * @returns {Promise<void>}
+   */
+  async _eraseAll({ signal } = {}) {
     if (!this.loader.isStub) throw UnsupportedOperationError.requiresStub('Chip erase');
     await this.loader.attachSpiFlash();
     await this.loader.command(CMD.ERASE_FLASH, new Uint8Array(0), { signal, timeoutMs: 120000 });
@@ -343,7 +420,20 @@ export class EspFlash {
    * @param {OperationOptions} [options]
    * @returns {Promise<{ok: boolean, expected: string, actual: string}>}
    */
-  async verify(address, data, { signal } = {}) {
+  async verify(address, data, options = {}) {
+    return this.loader.exclusive(() => this._verify(address, data, options), {
+      signal: options.signal,
+      phase: 'verifying',
+    });
+  }
+
+  /**
+   * @param {number} address
+   * @param {Uint8Array} data
+   * @param {OperationOptions} [options]
+   * @returns {Promise<{ok: boolean, expected: string, actual: string}>}
+   */
+  async _verify(address, data, { signal } = {}) {
     this.checkRange(address, data.length);
     await this.loader.attachSpiFlash();
 
@@ -375,15 +465,26 @@ export class EspFlash {
    * @param {OperationOptions & {size?: number}} [options]
    * @returns {Promise<Uint8Array>}
    */
-  async dump({ size, onProgress, signal } = {}) {
-    const total = size ?? this.flashSize ?? (await this.getInfo()).flashSize;
+  async dump(options = {}) {
+    return this.loader.exclusive(() => this._dump(options), {
+      signal: options.signal,
+      phase: 'reading',
+    });
+  }
+
+  /**
+   * @param {OperationOptions & {size?: number}} [options]
+   * @returns {Promise<Uint8Array>}
+   */
+  async _dump({ size, onProgress, signal } = {}) {
+    const total = size ?? this.flashSize ?? (await this._getInfo()).flashSize;
     if (total === null) {
       throw new UnsupportedOperationError(
         'UNKNOWN_FLASH_SIZE',
         'Flash size could not be detected; pass an explicit size to dump().',
       );
     }
-    return this.read(0, total, { onProgress, signal });
+    return this._read(0, total, { onProgress, signal });
   }
 
   /**

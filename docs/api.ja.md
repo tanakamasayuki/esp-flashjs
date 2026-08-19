@@ -48,6 +48,8 @@ new EspLoader(transport, { onLog })
 | `sync()` / `reset(strategy)` / `detectChip()` / `getSecurityInfo()` | `connect()` の各段階。特殊な流れ用に公開 |
 | `attachSpiFlash()` / `runSpiFlashCommand(cmd, opts)` | 生の SPI |
 | `stubNameFor(chip)` | このシリコンに必要な stub。リビジョンで異なるチップがある |
+| `exclusive(run, { signal, phase })` | リンクを占有して処理を実行する |
+| `busy` | 実行中または待機中の操作があるか |
 
 ### `class EspFlash`
 
@@ -67,6 +69,8 @@ new EspFlash(loader)
 | `eraseAll({ signal })` | チップ全体 |
 | `dump({ size, onProgress, signal })` | 全体を読む |
 | `probePartitions(partitions, { probeBytes, onProgress, signal })` | 各領域の先頭セクタ。`Map<label, 'erased'\|'zeroed'\|'data'\|'unreadable'>` を返す |
+
+**操作は直列化されます。** シリアルポートが運べる会話は1つで、2つ同時に始めると**互いのフレームを読み合います**。症状はチェックサム不一致 → タイムアウト → 「デバイスが応答しない」で、ケーブル不良と見分けがつきません。そのため上記の各操作はリンクを最初から最後まで占有し、**同時に呼ばれた側はキューで待ちます**。待つことは常に回復可能ですが、破損はそうではなく、これを呼び出し側に自作させるのは筋が通りません。キュー待ち中の操作も `signal` で中止できます。待つより拒否したいアプリケーション向けに、実行中かどうかは `loader.busy` で分かります。
 
 定数: `FLASH_SECTOR_SIZE`、`READ_BLOCK_SIZE`。
 

@@ -243,8 +243,8 @@ esp-flashjs/
 │   │   ├── esp-hex-viewer.js
 │   │   ├── esp-confirm-dialog.js
 │   │   └── esp-log.js
-│   │                         # esp-nvs-tree / esp-nvs-editor arrive in Phase 2,
-│   │                         # esp-diff-view in Phase 3
+│   │                         # esp-nvs-tree and esp-fs-tree arrived in
+│   │                         # Phases 2 and 4
 │   └── styles/
 │       └── app.css
 │
@@ -1822,7 +1822,7 @@ See [publishing.md](./publishing.md) for the full account. In brief:
       less than parsing them one phase apart)
 - [x] FAT parsing, including ESP-IDF's wear-levelling layer
 - [x] Filesystem tree with per-file extraction in the UI
-- [x] A dedicated diff view in the UI
+- [x] ~~A dedicated diff view in the UI~~ — built, then removed. It answered "how do these two differ?" while every other tab answered "what is this?", so nothing on screen explained why it was there. `diffBinary` remains in the API
 - [x] Refining encryption detection — entropy no longer claims encryption on its own; the chip's eFuse and the partition table decide ([9.4](#94-detecting-encryption))
 - [ ] ~~Decrypting with a supplied key~~ — feasible, deliberately deferred; the reasoning is in [9.5](#95-decryption-deliberately-not-implemented)
 

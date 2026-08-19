@@ -217,8 +217,8 @@ esp-flashjs/
 │   │   ├── esp-hex-viewer.js
 │   │   ├── esp-confirm-dialog.js
 │   │   └── esp-log.js
-│   │                         # Phase 2 で esp-nvs-tree / esp-nvs-editor,
-│   │                         # Phase 3 で esp-diff-view を追加予定
+│   │                         # esp-nvs-tree は Phase 2、
+│   │                         # esp-fs-tree は Phase 4 で追加
 │   └── styles/
 │       └── app.css
 │
@@ -1549,7 +1549,7 @@ GitHub Actions で以下を実行する。ローカルでは `npm run check` が
       フェーズを分けて別々に解析するより大幅に安い）
 - [x] FAT 解析（ESP-IDF の wear levelling 層込み）
 - [x] ファイルツリー表示とファイル単位の取り出し
-- [x] Diff 専用ビュー
+- [x] ~~Diff 専用ビュー~~ — 実装したうえで撤去。他のタブが「これは何か」に答えるのに対し、これだけ「この2つはどう違うか」に答えており、**なぜそこにあるのかを画面上の何も説明していなかった**。`diffBinary` は API に残る
 - [x] 暗号化検出の精度向上 — エントロピー単独では暗号化と断定しない。eFuse とパーティションテーブルで判断（[9.4](#94-暗号化の検出)）
 - [ ] ~~鍵を渡しての復号~~ — 実装可能だが意図的に見送り。理由は [9.5](#95-復号-意図的に実装しない)
 

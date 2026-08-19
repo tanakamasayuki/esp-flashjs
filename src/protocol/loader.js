@@ -79,6 +79,79 @@ export class EspLoader {
     this.frameQueue = [];
     /** @type {boolean} */
     this.spiAttached = false;
+    /**
+     * The tail of the queue of operations waiting for the link.
+     *
+     * See {@link EspLoader#exclusive}.
+     *
+     * @type {Promise<void>}
+     */
+    this.pending = Promise.resolve();
+    /** How many operations are running or waiting. @type {number} */
+    this.queued = 0;
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Serialization                                                       */
+  /* ------------------------------------------------------------------ */
+
+  /**
+   * Runs an operation with sole use of the link.
+   *
+   * A serial port carries one conversation. Two operations started at once do
+   * not interleave harmlessly — each reads the other's frames, so a read comes
+   * back with a checksum mismatch or, worse, with the right length and the
+   * wrong bytes. The symptom is a burst of unrelated failures and a device
+   * that appears to have stopped responding, which is exactly what a flaky
+   * cable looks like.
+   *
+   * Callers therefore queue rather than fail. A library cannot know that the
+   * second caller was a mistake — a program legitimately reading two
+   * partitions one after another should not have to build this itself — and
+   * waiting is always recoverable where corruption is not. An application that
+   * wants to refuse instead can look at {@link EspLoader#busy}.
+   *
+   * Only whole operations take the lock. Nothing inside one does, because the
+   * lock is not reentrant: a nested acquire would wait for a release that only
+   * the caller doing the waiting can perform.
+   *
+   * @template T
+   * @param {() => Promise<T>} run
+   * @param {object} [options]
+   * @param {AbortSignal} [options.signal]
+   * @param {import('../util/events.js').ProgressPhase} [options.phase] Named in
+   *   the abort error, so giving up while queued says what was given up on.
+   * @returns {Promise<T>}
+   */
+  async exclusive(run, { signal, phase = 'reading' } = {}) {
+    const ahead = this.pending;
+    /** @type {() => void} */
+    let release = () => {};
+    this.pending = new Promise((resolve) => {
+      release = resolve;
+    });
+    this.queued += 1;
+
+    try {
+      await ahead;
+      // Checked after the wait as well as before it: the point of queuing is
+      // that the wait can be long, and someone who gives up during it should
+      // not then have their operation run anyway.
+      throwIfAborted(signal, phase);
+      return await run();
+    } finally {
+      release();
+      this.queued -= 1;
+    }
+  }
+
+  /**
+   * Whether an operation is running or waiting for the link.
+   *
+   * @returns {boolean}
+   */
+  get busy() {
+    return this.queued > 0;
   }
 
   /* ------------------------------------------------------------------ */

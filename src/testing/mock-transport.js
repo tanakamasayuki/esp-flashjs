@@ -96,6 +96,17 @@ export class MockTransport {
     this.flakyReads = flakyReads;
     /** @type {number} Transfers that were made to fail, for assertions. */
     this.droppedReads = 0;
+    /**
+     * Times a transfer was started while another was still running.
+     *
+     * A device has one of these sessions, not one per caller, so a second
+     * READ_FLASH replaces the first and both hosts then read each other's
+     * blocks. Recording it makes the mistake visible to a test even when the
+     * bytes happen to come out right, which they sometimes do — and a
+     * concurrency bug that only sometimes corrupts data is the kind that ships.
+     * @type {number}
+     */
+    this.overlappedReads = 0;
 
     /** @type {boolean} */
     this.opened = false;
@@ -374,6 +385,9 @@ export class MockTransport {
         const address = pv.getUint32(0, true);
         const length = pv.getUint32(4, true);
         const blockSize = pv.getUint32(8, true);
+        if (this.readSession && this.readSession.sent < this.readSession.data.length) {
+          this.overlappedReads += 1;
+        }
         this.respond(op);
         this.readSession = {
           data: this.flash.subarray(address, address + length),

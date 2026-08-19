@@ -537,3 +537,108 @@ test('a range larger than one chunk is split, and each chunk is verified', async
     assert.equal(data[i], (i * 7 + 3) & 0xff, `byte ${i}`);
   }
 });
+
+/* -------------------------------------------------------------------------- */
+/* One conversation at a time                                                  */
+/* -------------------------------------------------------------------------- */
+
+test('two reads started at once do not read each other frames', async () => {
+  // A serial port carries one conversation. Two operations in flight together
+  // each consume the other's frames, and the failure does not look like a
+  // programming mistake — it looks like a bad cable: a checksum mismatch, then
+  // a run of timeouts, then a device that appears to have stopped responding.
+  // That is exactly what was reported from the web app when a write's backup
+  // read started while another read was still going.
+  const { loader, transport } = await connected({ chip: 'ESP32', flash: flashImage() });
+  await loader.loadStub();
+  const flash = new EspFlash(loader);
+
+  // Large enough to need many blocks and acknowledgements each: the damage is
+  // done by the two transfers taking turns, so a read short enough to finish
+  // in one block would not show it.
+  const [app, table] = await Promise.all([
+    flash.read(0x10000, 0x20000),
+    flash.read(0x8000, 0x20000),
+  ]);
+
+  // The device has one transfer session, not one per caller. This is the
+  // invariant; that the bytes also came out right is luck, and the kind of
+  // luck that holds in a test and not on a real link.
+  assert.equal(transport.overlappedReads, 0, 'the second read must wait for the first');
+
+  const expected = flashImage();
+  assert.deepEqual(Buffer.from(app), Buffer.from(expected.subarray(0x10000, 0x10000 + 0x20000)));
+  assert.deepEqual(Buffer.from(table), Buffer.from(expected.subarray(0x8000, 0x8000 + 0x20000)));
+});
+
+test('queued operations run in the order they were asked for', async () => {
+  const { loader } = await connected();
+  /** @type {string[]} */
+  const order = [];
+
+  await Promise.all(
+    ['first', 'second', 'third'].map((name) =>
+      loader.exclusive(async () => {
+        order.push(`${name}:start`);
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        order.push(`${name}:end`);
+      }),
+    ),
+  );
+
+  assert.deepEqual(order, [
+    'first:start',
+    'first:end',
+    'second:start',
+    'second:end',
+    'third:start',
+    'third:end',
+  ]);
+});
+
+test('an operation that throws still releases the link', async () => {
+  const { loader } = await connected();
+  await assert.rejects(() =>
+    loader.exclusive(async () => {
+      throw new Error('boom');
+    }),
+  );
+  assert.equal(loader.busy, false);
+  assert.equal(await loader.exclusive(async () => 'through'), 'through');
+});
+
+test('giving up while queued does not run the operation anyway', async () => {
+  // The whole point of queuing is that the wait can be long. Someone who
+  // cancels during it has cancelled.
+  const { loader } = await connected();
+  const controller = new AbortController();
+  let ran = false;
+
+  const ahead = loader.exclusive(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  });
+  const queued = loader.exclusive(
+    async () => {
+      ran = true;
+    },
+    { signal: controller.signal },
+  );
+  controller.abort();
+
+  await assert.rejects(queued, /aborted/i);
+  await ahead;
+  assert.equal(ran, false);
+  assert.equal(loader.busy, false);
+});
+
+test('busy reports whether the link is in use', async () => {
+  const { loader } = await connected();
+  assert.equal(loader.busy, false);
+
+  let observed = false;
+  await loader.exclusive(async () => {
+    observed = loader.busy;
+  });
+  assert.equal(observed, true);
+  assert.equal(loader.busy, false);
+});

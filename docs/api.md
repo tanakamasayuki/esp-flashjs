@@ -55,6 +55,8 @@ new EspLoader(transport, { onLog })
 | `sync()` / `reset(strategy)` / `detectChip()` / `getSecurityInfo()` | Steps of `connect()`, exposed for unusual flows |
 | `attachSpiFlash()` / `runSpiFlashCommand(cmd, opts)` | Raw SPI |
 | `stubNameFor(chip)` | Which stub build this silicon needs. Some chips differ by revision |
+| `exclusive(run, { signal, phase })` | Run something with sole use of the link |
+| `busy` | Whether an operation is running or waiting |
 
 ### `class EspFlash`
 
@@ -74,6 +76,15 @@ new EspFlash(loader)
 | `eraseAll({ signal })` | The whole chip |
 | `dump({ size, onProgress, signal })` | Read everything |
 | `probePartitions(partitions, { probeBytes, onProgress, signal })` | First sector of each; returns `Map<label, 'erased'\|'zeroed'\|'data'\|'unreadable'>` |
+
+**Operations are serialised.** A serial port carries one conversation, and two
+started at once read each other's frames — which surfaces as a checksum
+mismatch, then timeouts, then a device that looks like it has stopped
+responding. So every operation above takes the link for its whole duration and
+concurrent callers queue. Waiting is always recoverable; corruption is not, and
+a caller cannot be expected to build this itself. A queued operation can still
+be abandoned through its `signal`, and `loader.busy` says whether anything is
+in flight for an application that would rather refuse than wait.
 
 Constants: `FLASH_SECTOR_SIZE`, `READ_BLOCK_SIZE`.
 
