@@ -18,7 +18,7 @@ Chrome か Edge で開いてボードを繋ぐだけです。インストール�
 ESP32 のフラッシュメモリを JavaScript から読み出し・解析・編集・書き戻しするライブラリです。実行時依存はゼロ、ビルドも不要で、ブラウザと Node.js がそのまま解釈できる素の ESM です。
 
 ```js
-import { parsePartitionTable } from 'https://cdn.jsdelivr.net/npm/esp-flashjs@0.1.0/dist/esp-flashjs.core.min.js';
+import { parsePartitionTable } from 'https://cdn.jsdelivr.net/npm/esp-flashjs@1.0.0/dist/esp-flashjs.core.min.js';
 
 const table = parsePartitionTable(bytes);
 console.log(table.partitions);
@@ -36,11 +36,13 @@ console.log(table.partitions);
 
 ## 現状
 
-Phase 1 を実装済みです。Transport、ブートローダプロトコル、チップ検出、stub ロード、Flash の read / write / erase / verify / dump、パーティションテーブル、ファームウェアイメージ、OTA データ、バイナリ差分と検索、そしてリファレンス Web アプリまで動きます。
+[esp-flashjs@1.0.0](https://www.npmjs.com/package/esp-flashjs) としてリリース済みです。
 
-[esp-flashjs@0.1.0](https://www.npmjs.com/package/esp-flashjs) として公開済みです。
+プロトコル層・各形式・リファレンス Web アプリまで実装済みです。チップ検出、flasher stub、read / write / erase / verify / dump、パーティションテーブル、ファームウェアイメージ、otadata、そして NVS・SPIFFS・LittleFS・FAT の解析・編集・再構築が、API からも Web アプリからも行えます。
 
-NVS と、SPIFFS・LittleFS・FAT の3形式すべてについて、解析・編集・再構築が API からも Web アプリからも行えます。いずれも**自前で生成したイメージではなく、ESP32 / ESP32-S3 / ESP32-P4 の実機から吸い出したフラッシュ**でテストしています。この区別がなぜ効いたかは [テスト fixture の作り方](./tools/fixture-device/README.ja.md) に、残っている項目は[ロードマップ](./docs/spec.ja.md#22-ロードマップ)に書いてあります。
+いずれも**自前で生成したイメージではなく、ESP32 / ESP32-S3 / ESP32-P4 の実機から吸い出したフラッシュ**でテストしています。この区別がなぜ効いたかは [テスト fixture の作り方](./tools/fixture-device/README.ja.md) に書いてあります（**全部通っているテストスイートを9件の不具合が素通りしていました**）。残っている項目は[ロードマップ](./docs/spec.ja.md#22-ロードマップ)にあります。
+
+**0.1.0 はテストリリース**です。実機が手元に無い状態で公開したもので、デバイスとのセッションが成立しません。使用しないでください。
 
 ## インストール
 
@@ -62,7 +64,7 @@ CDN からならインストールも不要です。
 
 ```html
 <script type="module">
-  import { analyzeBinary } from 'https://cdn.jsdelivr.net/npm/esp-flashjs@0.1.0/dist/esp-flashjs.min.js';
+  import { analyzeBinary } from 'https://cdn.jsdelivr.net/npm/esp-flashjs@1.0.0/dist/esp-flashjs.min.js';
 </script>
 ```
 
@@ -214,7 +216,7 @@ npm への公開は手元のマシンから、コピペ 3 行で行います。[
 
 | 文書 | 内容 |
 | --- | --- |
-| [CHANGELOG.ja.md](./CHANGELOG.ja.md) | 変更履歴。以前どこが誤っていたかも記載 |
+| [CHANGELOG.md](./CHANGELOG.md) | 変更履歴。英日を1ファイルに併記 |
 | [guide.ja.md](./docs/guide.ja.md) | **ここから。** 作業単位で全部 |
 | [api.ja.md](./docs/api.ja.md) | 全エクスポートを用途別に |
 | [troubleshooting.ja.md](./docs/troubleshooting.ja.md) | 症状別。それが何を意味するか |

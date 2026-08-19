@@ -11,7 +11,8 @@ Related: [Development guide](./development.md) / [CI](./ci.md) / [Publishing](./
 
 ## 1. Every release (copy and paste this)
 
-With `main` clean and everything committed:
+With `main` clean, first close the changelog (see
+[section 1.1](#11-closing-the-changelog)), then:
 
 ```sh
 npm version patch              # patch for fixes / minor for features / major for breaking changes
@@ -35,8 +36,47 @@ Choosing the bump:
 | Backwards-compatible feature | `npm version minor` |
 | Breaking change (API changed or removed) | `npm version major` |
 
-While on `0.x`, **breaking changes may go into a minor bump** (`0.1.0` →
-`0.2.0`). The API is not settled yet, and the README says so.
+From 1.0.0 the API is under semantic versioning: **a breaking change needs a
+major bump**, and "it was obviously wrong" is not an exemption — someone
+pinned to `^1` will take the fix without reading anything.
+
+---
+
+## 1.1. Closing the changelog
+
+[CHANGELOG.md](../CHANGELOG.md) is one bilingual file: every point appears
+twice, `- (EN)` then `- (JA)`, and entries accumulate under `## Unreleased`
+while work happens. Closing a release means giving those entries a version
+number and opening an empty `## Unreleased` above them:
+
+```diff
+ ## Unreleased
++
++## 1.2.0
+ - (EN) …
+ - (JA) …
+```
+
+**By hand, before `npm version`.** Arduino libraries in this account have a
+GitHub Action do the same rename on a tag push; that is not wired up here, and
+it would be the wrong shape if it were. `npm version` runs `npm run check` and
+then tags whatever is committed — so an entry the Action wrote *after* the tag
+would describe a different commit than the one it is attached to. Doing it
+first puts the changelog in the release commit, which is where a reader will
+look for it.
+
+Two checks in `npm run check` cover the mechanical part:
+
+| Check | What it catches |
+| --- | --- |
+| `the changelog keeps its shape` | A heading that is not a bare version, an untagged bullet, or a section where the English and Japanese bullet counts differ |
+| `the version being shipped has a changelog entry` | Running `npm version 1.2.0` without a `## 1.2.0` section — **this fails the release rather than shipping an undocumented version** |
+
+Neither can judge whether the entries are any good. That part is
+[section 3](#3-what-to-check-by-hand-first).
+
+No dates. A tag carries one, npm carries one, and a third copy maintained by
+hand is a third copy to get wrong.
 
 ---
 
@@ -62,9 +102,9 @@ fail red on a version npm already has. To publish from CI instead, see
 covered. Only the things it cannot see are left.
 
 - [ ] `git status` is clean
-- [ ] **`CHANGELOG.md` and `CHANGELOG.ja.md` have an entry for this version**,
-      with its date. `npm version` creates the tag from whatever is committed,
-      so an entry written afterwards is an entry for the wrong commit
+- [ ] The changelog is closed ([section 1.1](#11-closing-the-changelog)) and
+      the entries read as something a user would want to know, not as a list of
+      commit subjects
 - [ ] The **chip support table** in both READMEs is current — mark a chip
       verified only if it actually was
 - [ ] Phase progress in the READMEs matches reality
@@ -115,8 +155,8 @@ node -e "import('esp-flashjs/core').then(m => console.log(Object.keys(m).length,
 ```
 
 Write the GitHub Release by hand (Releases → Draft a new release, pick the tag).
-Worth including: new features, **breaking changes** (on `0.x` they arrive in a
-minor bump, so make them impossible to miss), bug fixes, and any chip newly
+Worth including: new features, **breaking changes** (which from 1.0.0 mean a
+major bump, so make them impossible to miss), bug fixes, and any chip newly
 verified on hardware.
 
 ---

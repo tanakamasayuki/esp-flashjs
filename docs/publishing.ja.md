@@ -14,7 +14,7 @@
 | --- | --- | --- |
 | **GitHub Pages** | Web アプリを試したい人 | `https://tanakamasayuki.github.io/esp-flashjs/` |
 | **npm** | 自分のプロジェクトに組み込む人 | `npm i esp-flashjs` |
-| **CDN** | ビルドなしで使いたい人 | `https://cdn.jsdelivr.net/npm/esp-flashjs@0.1.0/dist/esp-flashjs.min.js` |
+| **CDN** | ビルドなしで使いたい人 | `https://cdn.jsdelivr.net/npm/esp-flashjs@1.0.0/dist/esp-flashjs.min.js` |
 
 ### 1.1 ライブラリ配布は plainbind の方式を踏襲する
 
@@ -242,7 +242,7 @@ git push --follow-tags
 `.github/workflows/release.yml` は残してあるが `workflow_dispatch` のみで、タグ push では発火しない。ローカル公開と衝突して必ず失敗するためである。CI から公開したくなった場合は Trusted Publishing（OIDC）を設定して手動実行する。
 
 - Actions から公開する場合は **`--provenance` を使う。** ハードウェアを書き換えるライブラリなので、供給元が検証可能であることには価値がある。
-- semver。`0.x` の間は破壊的変更を minor で入れてよいこととし、README に明記する。
+- semver。1.0.0 以降、破壊的変更には major が要る。
 
 手順の詳細は [release.ja.md](./release.ja.md)。
 
@@ -255,7 +255,7 @@ npm に公開すれば以下がそのまま動く。追加作業は不要。
 ```html
 <!-- 推奨: jsDelivr -->
 <script type="module">
-  import { parsePartitionTable } from 'https://cdn.jsdelivr.net/npm/esp-flashjs@0.1.0/dist/esp-flashjs.core.min.js';
+  import { parsePartitionTable } from 'https://cdn.jsdelivr.net/npm/esp-flashjs@1.0.0/dist/esp-flashjs.core.min.js';
 </script>
 ```
 
@@ -269,7 +269,7 @@ npm に公開すれば以下がそのまま動く。追加作業は不要。
 
 ```html
 <script type="module">
-  import { parseNvs } from 'https://cdn.jsdelivr.net/npm/esp-flashjs@0.1.0/src/format/nvs/parse.js';
+  import { parseNvs } from 'https://cdn.jsdelivr.net/npm/esp-flashjs@1.0.0/src/format/nvs/parse.js';
 </script>
 ```
 

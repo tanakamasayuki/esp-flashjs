@@ -277,13 +277,11 @@ export class EspInspector extends HTMLElement {
 
     const heading = document.createElement('h3');
     heading.textContent = target.title;
-    wrap.append(heading, this._detailList(target));
-
-    const note = document.createElement('p');
-    note.className = 'note';
-    note.textContent = t('inspector.notRead');
-    wrap.append(note);
-
+    // The read control goes here too, and this is the path that needs it most:
+    // anything too large to be read on selection arrives here, so leaving it to
+    // the branch that only runs once there is data took the button away from
+    // exactly the regions that still had to be fetched by hand.
+    wrap.append(heading, this._freshness(target), this._detailList(target));
     wrap.append(this._readActions(target));
     return wrap;
   }

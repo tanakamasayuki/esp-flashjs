@@ -112,7 +112,6 @@ test('every relative link in the documentation resolves', () => {
     'README.md',
     'README.ja.md',
     'CHANGELOG.md',
-    'CHANGELOG.ja.md',
     'tools/fixture-device/README.md',
     'tools/fixture-device/README.ja.md',
   ];
@@ -174,7 +173,6 @@ test('every in-document anchor resolves to a heading', () => {
     'README.md',
     'README.ja.md',
     'CHANGELOG.md',
-    'CHANGELOG.ja.md',
   ];
 
   /** @type {Map<string, Set<string>>} */
@@ -212,7 +210,8 @@ test('no Japanese document has stray Hangul', () => {
       .filter((f) => f.endsWith('.ja.md'))
       .map((f) => `docs/${f}`),
     'README.ja.md',
-    'CHANGELOG.ja.md',
+    // CHANGELOG.md is bilingual by design, so it is checked with the rest.
+    'CHANGELOG.md',
   ];
 
   /** @type {string[]} */
@@ -224,4 +223,59 @@ test('no Japanese document has stray Hangul', () => {
     });
   }
   assert.deepEqual(found, [], `Hangul in a Japanese document: ${found.join(', ')}`);
+});
+
+test('the changelog keeps its shape', () => {
+  // A bilingual changelog drifts in one direction: an entry gets added in one
+  // language and not the other, and nothing notices until a reader who only
+  // speaks the other one hits the gap. Pinning the shape is cheap; noticing by
+  // hand is not.
+  const text = readFileSync(new URL('../CHANGELOG.md', import.meta.url), 'utf8');
+  const lines = text.split('\n');
+
+  assert.equal(lines[0], '# Changelog / 変更履歴');
+
+  const versions = lines.filter((line) => line.startsWith('## '));
+  assert.equal(versions[0], '## Unreleased', 'the next release accumulates at the top');
+
+  for (const heading of versions.slice(1)) {
+    assert.match(
+      heading,
+      /^## \d+\.\d+\.\d+$/,
+      `"${heading}" — a released section is a bare version, newest first`,
+    );
+  }
+
+  /** @type {Map<string, {en: number, ja: number}>} */
+  const counts = new Map();
+  let section = '';
+  for (const line of lines) {
+    if (line.startsWith('## ')) {
+      section = line.slice(3);
+      counts.set(section, { en: 0, ja: 0 });
+      continue;
+    }
+    if (!line.startsWith('-')) continue;
+    assert.match(line, /^- \((EN|JA)\) /, `every bullet is tagged: ${line.slice(0, 40)}…`);
+    const tally = /** @type {{en: number, ja: number}} */ (counts.get(section));
+    if (line.startsWith('- (EN)')) tally.en += 1;
+    else tally.ja += 1;
+  }
+
+  for (const [version, { en, ja }] of counts) {
+    assert.equal(en, ja, `${version} has ${en} English bullet(s) and ${ja} Japanese`);
+  }
+});
+
+test('the version being shipped has a changelog entry', () => {
+  // `npm version` tags whatever is committed, so an entry written afterwards
+  // describes a different commit than the one it is attached to.
+  const { version } = JSON.parse(
+    readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
+  );
+  const text = readFileSync(new URL('../CHANGELOG.md', import.meta.url), 'utf8');
+  assert.ok(
+    text.includes(`\n## ${version}\n`),
+    `CHANGELOG.md has no "## ${version}" section. Move the Unreleased entries under it before releasing.`,
+  );
 });

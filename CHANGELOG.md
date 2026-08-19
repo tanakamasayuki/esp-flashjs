@@ -1,177 +1,27 @@
-# Changelog
+# Changelog / 変更履歴
 
-[日本語](./CHANGELOG.ja.md) · **English**
+## Unreleased
 
-## 1.0.0 — unreleased
+## 1.0.0
+- (EN) First release. A dependency-free, build-step-free JavaScript library for reading, analysing, editing and writing ESP32 flash — the serial bootloader protocol, the flasher stub, partition tables, firmware images, otadata, NVS, SPIFFS, LittleFS and FAT — plus a Web Serial reference application. Runs from a `<script type="module">` or from Node; `esp-flashjs/core` is the parsers alone, with no serial code.
+- (JA) 初回リリース。依存もビルド手順も不要な JavaScript ライブラリで、ESP32 のフラッシュを読み・解析し・編集し・書き戻す。シリアルブートローダのプロトコル、flasher stub、パーティションテーブル、ファームウェアイメージ、otadata、NVS、SPIFFS、LittleFS、FAT に対応し、Web Serial のリファレンスアプリを同梱する。`<script type="module">` からも Node からも動き、`esp-flashjs/core` はパーサのみでシリアル関連を含まない。
+- (EN) Everything is verified against ESP32, ESP32-S3 and ESP32-P4 hardware, and the test fixtures are **bytes those devices wrote** rather than bytes this project generated. That distinction is the reason this release exists: a parser and the fixture it is tested against, written from the same reading of a format, agree with each other whether or not that reading was correct. Nine faults survived a complete, passing test suite until real captures replaced the generated ones.
+- (JA) すべて ESP32 / ESP32-S3 / ESP32-P4 の実機で検証しており、テスト fixture は**実機が書いたバイト列**であって、このプロジェクトが生成したものではない。この区別こそがこのリリースの理由である。同じ形式理解から書かれたパーサと fixture は、その理解が誤っていても互いに一致してしまう。実機キャプチャに置き換えるまで、**全部通っているテストスイートを9件の不具合が素通りしていた**。
+- (EN) Flash operations: chip detection, stub upload, chunked reads with per-chunk retry, write, erase, device-side verify and whole-chip dump. Operations on one link are serialised — two started at once each read the other's frames, which presents as a checksum mismatch, then timeouts, then a device that appears to have stopped responding.
+- (JA) フラッシュ操作：チップ検出、stub 転送、チャンク分割＋チャンク単位リトライの読み出し、書き込み、消去、デバイス側検証、チップ全体のダンプ。1本のリンク上の操作は直列化される。2つ同時に始めると互いのフレームを読み合い、チェックサム不一致 → タイムアウト → 「デバイスが応答しない」という、ケーブル不良と区別のつかない症状になる。
+- (EN) NVS is parsed, edited, rebuilt and diffed. `buildNvs` re-reads its own output and compares it against the store before returning, and refuses rather than truncating — a partition a device has to boot from is the wrong place to silently drop the last entry.
+- (JA) NVS は解析・編集・再構築・差分に対応。`buildNvs` は返す前に自分の出力を読み直してストアと突き合わせ、入り切らなければ切り詰めずに失敗する。デバイスが起動に使うパーティションは、最後のエントリを黙って落としてよい場所ではない。
+- (EN) SPIFFS, LittleFS and FAT are parsed and rebuilt at the geometry they came from. Each is pinned by a check the round trip cannot fake: SPIFFS is read back through its object indexes the way a device reads it, LittleFS is walked along the tail chain its block allocator follows, and FAT carries ESP-IDF's wear-levelling state over rather than regenerating it. `tools/hardware-check.mjs --rebuild` settles the remaining question by writing an edited image back and reading the chip's own driver report.
+- (JA) SPIFFS / LittleFS / FAT は解析と、元と同じジオメトリでの再構築に対応。各形式に**ラウンドトリップでは誤魔化せない検査**を用意した。SPIFFS はデバイスと同じくオブジェクトインデックス経由で読み戻し、LittleFS はブロックアロケータが辿る tail チェーンを歩き、FAT は ESP-IDF の wear levelling 状態を再生成せず引き継ぐ。残る「実機がマウントするか」は `tools/hardware-check.mjs --rebuild` が、編集したイメージを書き戻してチップ自身のドライバの報告を読むことで確認する。
+- (EN) Analysers recognise and describe a region, and third-party formats can register their own at runtime ([docs/analyzers.md](./docs/analyzers.md)). Encryption is reported from what the chip says about itself, not from entropy: an unencrypted LittleFS image holding a counter file scores a perfect 8.0 bits per byte.
+- (JA) Analyzer が領域を認識して内容を記述し、独自形式は実行時に登録できる（[docs/analyzers.ja.md](./docs/analyzers.ja.md)）。暗号化の判定はエントロピーではなくチップ自身の申告による。カウンタを持つ**暗号化していない** LittleFS イメージが 8.0 bits/byte ちょうどを記録するためである。
+- (EN) The reference application at [tanakamasayuki.github.io/esp-flashjs](https://tanakamasayuki.github.io/esp-flashjs/) has a flash map, an inspector with analysis and a hex view, an NVS editor, a filesystem tree with add/replace/delete/in-place text editing and ZIP extraction, a link-speed control, and en / ja / zh-Hans / zh-Hant.
+- (JA) リファレンスアプリ（[tanakamasayuki.github.io/esp-flashjs](https://tanakamasayuki.github.io/esp-flashjs/)）はフラッシュマップ、解析と hex ビューを持つ inspector、NVS エディタ、追加／置換／削除／その場でのテキスト編集と ZIP 取り出しができるファイルツリー、通信速度セレクタを備え、en / ja / zh-Hans / zh-Hant に対応する。
+- (EN) Nothing read from a device outlives a connection, and a write downloads a backup before touching anything. Both follow from the same rule: a copy of flash goes stale the moment the application starts running again, and the tool must not present a stale copy as the current one.
+- (JA) デバイスから読んだものは接続をまたいで残らず、書き込みは何かに触れる前にバックアップをダウンロードする。どちらも同じ規則から出ている。**フラッシュのコピーはアプリケーションが動き出した瞬間に古くなる**のであり、古いコピーを現在のものとして見せてはならない。
+- (EN) Limits: rebuilding regenerates at the original geometry and does not format to arbitrary parameters; an encrypted region is detected but [deliberately not decrypted](./docs/spec.md#95-decryption-deliberately-not-implemented); the other chips in the table are implemented but not hardware-verified, and the README says which is which.
+- (JA) 制限：再構築は元のジオメトリでの再生成に限られ、任意パラメータでのフォーマットはしない。暗号化領域は検出するが[意図的に復号しない](./docs/spec.ja.md#95-復号-意図的に実装しない)。表にある他のチップは実装済みだが実機未検証であり、README にどれがどちらか明記してある。
 
-The first release verified against hardware. Every format this library parses
-is now checked against flash captured from an ESP32, an ESP32-S3 and an
-ESP32-P4, and the protocol stack is checked by driving those same boards.
-
-### If you are on 0.1.0
-
-**0.1.0 could not talk to a device.** It was published before any hardware was
-available, and five separate faults each prevented a session from completing.
-None of them showed up in the test suite, because the suite compared the
-library against fixtures and a mock the library itself produced.
-
-- **Reads were lost to their own timeout.** `read()` raced the underlying read
-  against a timer; when the timer won, the in-flight chunk was abandoned rather
-  than cancelled, so every later frame arrived one behind. It presented as chip
-  detection failing on every board.
-- **Data command checksums covered the header.** The ROM answers `0x07 Invalid
-  CRC`. The checksum is over the payload only.
-- **READ_FLASH acknowledgements were sent unframed.** The stub waits for a SLIP
-  frame, so the transfer stalled after the first block.
-- **Partition table magic was byte-reversed.** The parser accepted only its own
-  output; a real table was rejected as invalid.
-- **otadata used standard CRC-32.** The ROM uses an inverted-seed convention,
-  so every real otadata sector looked corrupt.
-
-### Added
-
-- **NVS building and diffing.** `buildNvs` serialises a store back to a
-  partition image and re-parses its own output before returning; `diffNvs`
-  compares two images, with optional rename detection.
-- **Filesystems.** `parseSpiffs`, `parseLittlefs` and `parseFat` read files out
-  of an image, including nested directories and files spanning many storage
-  units. FAT is read through ESP-IDF's wear-levelling layer.
-- **Analyzers for NVS, SPIFFS, LittleFS and FAT**, so a region is recognised
-  and described rather than reported as an unimplemented format.
-- **Chunked reads with per-chunk retry.** A READ_FLASH transfer is
-  all-or-nothing, so a link that drops bytes could never deliver a large range
-  however often it was retried. `read()` now splits the range and retries each
-  piece.
-- **Filesystem editing and rebuilding.** `FsStore` holds an editable tree and
-  `buildFs` writes it back as a SPIFFS, LittleFS or FAT image at the geometry
-  it came from. Each format is checked by something a round trip cannot fake:
-  SPIFFS is read back through its object indexes the way a device reads it,
-  LittleFS is walked along the tail chain the block allocator follows, and FAT
-  carries the wear-levelling state over rather than regenerating it.
-  `checkFsStore` says what the target format cannot hold before anything is
-  built.
-- **A link-speed control in the web app**, and a filesystem tree with add,
-  replace, delete and write-back, plus an NVS editor, in the inspector.
-- **Extracting a whole filesystem produces one ZIP**, with the real paths and
-  empty directories intact, instead of a burst of downloads whose names had the
-  directory folded into them. No dependency: a ZIP is a few little-endian
-  structs, the checksum is the CRC-32 already here, and the compression is
-  `CompressionStream`.
-- **Text files can be read and edited in place**, for anything that decodes as
-  strict UTF-8 and is under 256 KB. Nothing reaches the device until write-back.
-- **Documentation for writing analyzers and transports**, both with worked
-  examples that are executed by the test suite.
-- **`tools/hardware-check.mjs`**, which drives the library against a board and
-  compares the result with an esptool capture. `--rebuild` goes further: it
-  edits each filesystem, writes it back, resets the board and reads the chip's
-  own driver reporting what it found — the only check that can establish that
-  an image this library writes is one a device will mount.
-
-### Fixed
-
-- **The ESP32-P4 could not be used at all.** Silicon below revision v3.0 places
-  RAM elsewhere and needs its own flasher stub; the ordinary one was uploaded
-  to addresses that do not exist and the chip never greeted back. Every P4 in
-  circulation is below v3.0. The revision is now read from eFuse and the stub
-  chosen accordingly.
-- **Analyzers claimed erased flash.** A blank `nvs` partition is still an `nvs`
-  partition as far as the table is concerned, so the subtype hint alone made
-  analyzers report unformatted flash as an empty filesystem — which reads as
-  "nothing stored here" rather than "never initialised".
-- **Encryption detection contradicted the chip.** High entropy alone cannot
-  separate ciphertext from compressed data, and an unencrypted LittleFS image
-  holding a counter file scores a perfect 8.0 bits/byte. Detection now defers
-  to what the device reports about itself, and says so plainly when it does not
-  know.
-- **The boot area was unrecognised on two chips in three.** The bootloader
-  starts at 0x0, 0x1000 or 0x2000 depending on the family; only offset 0 was
-  examined.
-- **A partition table's `encrypted` flag was treated as evidence.** It is a
-  policy bit that means nothing on a chip with encryption disabled.
-- **Two operations could run on the link at once.** Nothing serialised them,
-  so starting a write while a read was still going had each conversation
-  reading the other's frames: a checksum mismatch, a run of timeouts, and a
-  device that appeared to have stopped responding — indistinguishable from a
-  bad cable. `EspLoader` now queues whole operations, and the web app refuses
-  to start a second one rather than queuing a destructive write behind a long
-  read.
-- **Reconnecting kept the previous session's data.** The partition table, the
-  buffers and any pending edits stayed on screen with their write-back controls
-  live — one board's NVS was a click away from being written into another, and
-  even on the same board the copy predated everything the application had
-  written since. **Connecting now discards everything read from a device.** The
-  objection to that is losing a backup, and it does not hold: a write downloads
-  its backup to disk before touching anything, so what is discarded is time.
-  Imported files are kept.
-- **The read control was below the analysis**, which for a filesystem meant
-  below a hundred rows of file listing. It sits beside the heading now, with
-  the time the region was read next to it — a device keeps running while
-  someone reads a copy of its flash, and nothing else on screen distinguished
-  a copy taken a moment ago from one taken before the application rewrote it.
-- **Selecting a partition reads it**, when the link can deliver it in about
-  three seconds. Rationed in seconds rather than bytes on purpose: 100 KB is
-  under three seconds at 460800 and over eight at 115200, so a size threshold
-  is imperceptible on one link and looks like a hang on another.
-- **Unsaved edits were too quiet to notice.** A small accent-coloured count
-  beside a button, and a faint tint on changed rows, read as information rather
-  than as "this has not reached the device". Both editors now open with a
-  warning bar, mark each changed row with a stripe and the word for what
-  changed, and carry the count on the write-back button itself.
-- **Every editor went read-only the moment its data arrived.** Reading a
-  partition selects the resulting buffer rather than the partition, and a
-  buffer had forgotten which partition it came from — so the NVS edit buttons
-  and the filesystem text editor were unavailable right after a read and came
-  back only if you clicked the partition in the list again.
-- **"Read-only" gave the wrong reason.** It said to connect and load the stub
-  even when the image had been opened from a file, where connecting fixes
-  nothing. The three reasons — nothing to write back to, not connected, no stub
-  — are now reported as themselves.
-- **An extracted file did not keep its own name.** `hello.txt` arrived as
-  `spiffs_hello.txt`; the collision that was guarding against is one browsers
-  already handle by appending a number.
-- **The filesystem tree lost pending edits on any unrelated update.** The
-  element was rebuilt on every render and its edits lived in the element.
-- **An erased NVS entry struck through the word "erased".** The strike was set
-  on the table cell, and a text decoration on an ancestor is drawn across
-  everything inside it, so the one word explaining the row was the hardest part
-  of it to read.
-- **A FAT volume whose first directory entry had a long name read as empty.**
-  The wear-levelling spare is located by finding real directory entries where
-  the boot sector says the root directory is, and that test insisted on an 8.3
-  name — but a long-name entry is UTF-16, so detection failed outright and the
-  volume was reported as having no valid layout.
-- **LittleFS user attributes were matched by exact type.** The type is 0x300
-  plus a byte the application chose, so none of the real ones matched; ESP-IDF
-  stores the modification time under `'t'`, which is 0x374.
-
-### Removed
-
-- **The diff view.** Every other tab in the inspector answers "what is this
-  region I selected?"; this one answered "how do these two things differ?",
-  which is a different question about a different subject, and nothing on
-  screen explained why it was there. `diffBinary`, `diffBinaryStream` and
-  `diffSummary` are unchanged in the API.
-
-### Known limitations
-
-- **Rebuilding regenerates at the original geometry.** Formatting a filesystem
-  to arbitrary parameters is out of scope, FAT needs the image it came from,
-  and modification times are not carried over.
-- Long FAT file names are **not covered by a committed fixture**: nothing the
-  provisioning sketch writes has a name that needs them. `hardware-check.mjs
-  --rebuild` exercises them against a board instead.
-- `fetchStub` needs a browser: it asks `fetch()` for a URL beside the module,
-  and Node's fetch does not implement `file:`. Outside a browser, call
-  `registerStub`. See [docs/transports.md](./docs/transports.md).
-- Decrypting an encrypted region is
-  [deliberately not implemented](./docs/spec.md#95-decryption-deliberately-not-implemented).
-- Verified on ESP32, ESP32-S3 and ESP32-P4. Other chips in the table are
-  implemented but untested on hardware, and the README says which is which.
-
-## 0.1.0 — 2026-08-16
-
-First publication. Transport, bootloader protocol, chip detection, stub
-loading, flash read/write/erase/verify/dump, partition tables, firmware images,
-OTA data, binary diff and search, and the reference web app.
-
-Published before any hardware was available. See the note above.
+## 0.1.0
+- (EN) Test release, published before any hardware was available. It could not complete a session against a device: five separate faults each prevented it, none of which the test suite could see. Do not use it.
+- (JA) 実機が手元に無い状態で公開したテストリリース。5つの独立した不具合がそれぞれ単独でデバイスとのセッションを成立させなくしており、そのどれもテストスイートからは見えていなかった。使用しないこと。

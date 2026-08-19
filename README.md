@@ -21,7 +21,7 @@ library has no runtime dependencies and no build step: it is plain ESM that
 browsers and Node.js run as-is.
 
 ```js
-import { parsePartitionTable } from 'https://cdn.jsdelivr.net/npm/esp-flashjs@0.1.0/dist/esp-flashjs.core.min.js';
+import { parsePartitionTable } from 'https://cdn.jsdelivr.net/npm/esp-flashjs@1.0.0/dist/esp-flashjs.core.min.js';
 
 const table = parsePartitionTable(bytes);
 console.log(table.partitions);
@@ -44,19 +44,22 @@ exist for convenience, not because anything requires them.
 
 ## Status
 
-Phase 1 is implemented: transport, bootloader protocol, chip detection, stub
-loading, flash read/write/erase/verify/dump, partition tables, firmware images,
-OTA data, binary diff and search, plus the reference web app.
+Released as [esp-flashjs@1.0.0](https://www.npmjs.com/package/esp-flashjs).
 
-Published as [esp-flashjs@0.1.0](https://www.npmjs.com/package/esp-flashjs).
+The protocol stack, all the formats and the reference web app are implemented:
+chip detection, the flasher stub, read/write/erase/verify/dump, partition
+tables, firmware images, otadata, and NVS, SPIFFS, LittleFS and FAT — parsed,
+edited and rebuilt, from the API and from the web app alike.
 
-NVS and all three filesystems — SPIFFS, LittleFS and FAT — are parsed, edited
-and rebuilt, from the API and from the web app alike. Every one of them is
-tested against flash captured from an ESP32, an ESP32-S3 and an ESP32-P4 rather
-than against images this project generated; see
+Every one of them is tested against flash captured from an ESP32, an ESP32-S3
+and an ESP32-P4 rather than against images this project generated. See
 [test fixtures](./tools/fixture-device/README.md) for why that distinction
-turned out to matter, and [the roadmap](./docs/spec.md#22-roadmap) for what is
-left.
+turned out to matter — nine faults survived a complete, passing test suite
+until real captures replaced the generated ones — and
+[the roadmap](./docs/spec.md#22-roadmap) for what is left.
+
+**0.1.0 was a test release** published before any hardware was available, and
+could not complete a session against a device. Do not use it.
 
 ## Install
 
@@ -78,7 +81,7 @@ Or from a CDN, with no install at all:
 
 ```html
 <script type="module">
-  import { analyzeBinary } from 'https://cdn.jsdelivr.net/npm/esp-flashjs@0.1.0/dist/esp-flashjs.min.js';
+  import { analyzeBinary } from 'https://cdn.jsdelivr.net/npm/esp-flashjs@1.0.0/dist/esp-flashjs.min.js';
 </script>
 ```
 
@@ -262,7 +265,7 @@ is the index.
 
 | Document | Contents |
 | --- | --- |
-| [CHANGELOG.md](./CHANGELOG.md) | What changed, and what was wrong before |
+| [CHANGELOG.md](./CHANGELOG.md) | What changed, in English and Japanese in one file |
 | [guide.md](./docs/guide.md) | **Start here.** Every task, worked through |
 | [api.md](./docs/api.md) | Every export, grouped by purpose |
 | [troubleshooting.md](./docs/troubleshooting.md) | Symptoms, and what they usually mean |
