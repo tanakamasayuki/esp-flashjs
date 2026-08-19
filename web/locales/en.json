@@ -265,7 +265,6 @@
   "fs.apply": "Write back",
   "fs.apply.hint": "Rebuilds the whole partition image from these edits and writes it, after backing up what is there now.",
   "fs.revert": "Discard edits",
-  "fs.pending": "{count} pending change(s)",
   "confirm.fsChanges": "The filesystem is rebuilt and the whole partition rewritten. Free space is zeroed, so deleted files do not survive.",
   "error.FS_CAPACITY": "The files do not fit in the partition.",
   "error.FS_PATH": "A path cannot be stored in this filesystem.",
@@ -283,5 +282,15 @@
   "writeback.noPartition": "There is no partition behind this image, so there is nowhere to write it back to. Read one from a device to edit it in place.",
   "writeback.disconnected": "Not connected. Connect to the device holding this partition to write changes back.",
   "writeback.noStub": "The flasher stub is not running, and erase and write need it. Reconnect to load it.",
-  "writeback.readonly": "Read-only."
+  "writeback.readonly": "Read-only.",
+  "op.differentDevice": "A different device is attached. Everything read from the previous one was discarded ({dropped} buffer(s)), so nothing here can be written to the wrong board. Imported files were kept.",
+  "fs.unsaved": "{count} change(s) not written to the device.",
+  "fs.unsaved.hint": "They exist only in this page. Press write back to send them, or discard to drop them; closing the tab loses them.",
+  "fs.apply.count": "Write back ({count})",
+  "fs.state.added": "added",
+  "fs.state.modified": "changed",
+  "fs.state.deleted": "deleted",
+  "nvs.unsaved": "{count} change(s) not written to the device.",
+  "nvs.unsaved.hint": "They exist only in this page. Press write back to send them, or revert to drop them; closing the tab loses them.",
+  "nvs.apply.count": "Write back ({count})"
 }

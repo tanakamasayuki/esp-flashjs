@@ -265,7 +265,6 @@
   "fs.apply": "寫回",
   "fs.apply.hint": "依這些編輯重建整個分割區映像，並在備份目前內容後寫入。",
   "fs.revert": "捨棄編輯",
-  "fs.pending": "{count} 項待套用的變更",
   "confirm.fsChanges": "將重建檔案系統並重寫整個分割區。空閒空間會被清零，因此已刪除的檔案不會殘留。",
   "error.FS_CAPACITY": "檔案無法放入此分割區。",
   "error.FS_PATH": "此路徑無法存入這個檔案系統。",
@@ -283,5 +282,15 @@
   "writeback.noPartition": "此映像背後沒有分割區，因此無處寫回。若要就地編輯，請先從裝置讀取。",
   "writeback.disconnected": "未連線。要寫回變更，請連線到持有該分割區的裝置。",
   "writeback.noStub": "flasher stub 未執行，而抹除與寫入需要它。重新連線即可載入。",
-  "writeback.readonly": "唯讀。"
+  "writeback.readonly": "唯讀。",
+  "op.differentDevice": "已連接不同的裝置。從上一台裝置讀取的內容（{dropped} 個緩衝區）已捨棄，因此不會誤寫到另一塊板子。匯入的檔案已保留。",
+  "fs.unsaved": "有 {count} 處變更尚未寫入裝置。",
+  "fs.unsaved.hint": "它們只存在於本頁面。請按寫回送出，或捨棄編輯丟棄；關閉分頁會遺失。",
+  "fs.apply.count": "寫回（{count}）",
+  "fs.state.added": "新增",
+  "fs.state.modified": "變更",
+  "fs.state.deleted": "刪除",
+  "nvs.unsaved": "有 {count} 處變更尚未寫入裝置。",
+  "nvs.unsaved.hint": "它們只存在於本頁面。請按寫回送出，或還原丟棄；關閉分頁會遺失。",
+  "nvs.apply.count": "寫回（{count}）"
 }

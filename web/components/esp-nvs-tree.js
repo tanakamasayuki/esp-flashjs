@@ -34,7 +34,21 @@ const TEMPLATE = `
      further down, so styling the cell struck through the "erased" badge too
      and made the one word explaining the row the hardest part to read. */
   tr.erased td.key .name { text-decoration: line-through; }
-  tr.changed { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+  /* A tint alone was too quiet to read as "not written yet", and says nothing
+     to anyone who cannot separate the two colours. Stripe, word and tint. */
+  tr.changed { background: color-mix(in srgb, var(--warn) 14%, transparent); }
+  tr.changed td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
+  .unsaved {
+    display: flex; align-items: center; gap: 8px; margin: 0 0 8px;
+    padding: 7px 10px; border-radius: 4px; font-size: 12px; line-height: 1.5;
+    border: 1px solid var(--warn);
+    background: color-mix(in srgb, var(--warn) 16%, transparent);
+  }
+  .unsaved strong { font-weight: 600; }
+  button.primary.urgent {
+    border-color: var(--warn); background: color-mix(in srgb, var(--warn) 22%, transparent);
+    font-weight: 600;
+  }
   .tag { font-size: 10px; padding: 1px 5px; border-radius: 3px; margin-left: 6px;
          background: var(--bg-button); color: var(--fg-muted); }
   button {
@@ -57,6 +71,7 @@ const TEMPLATE = `
   .kind { display: inline-block; width: 68px; color: var(--fg-muted); }
   .note { color: var(--fg-muted); font-size: 11px; margin: 6px 0 0; }
 </style>
+<p class="unsaved" id="unsaved" hidden></p>
 <div class="toolbar" id="toolbar"></div>
 <div id="body"></div>
 <div id="changes"></div>
@@ -115,18 +130,33 @@ export class EspNvsTree extends HTMLElement {
     const toolbar = /** @type {HTMLElement} */ (root.getElementById('toolbar'));
     const body = /** @type {HTMLElement} */ (root.getElementById('body'));
     const changes = /** @type {HTMLElement} */ (root.getElementById('changes'));
+    const unsaved = /** @type {HTMLElement} */ (root.getElementById('unsaved'));
     toolbar.replaceChildren();
     body.replaceChildren();
     changes.replaceChildren();
+    unsaved.replaceChildren();
 
     const store = this._store;
-    if (!store) return;
+    if (!store) {
+      unsaved.hidden = true;
+      return;
+    }
 
     const pending = store.changes();
+    unsaved.hidden = pending.length === 0;
+    if (pending.length > 0) {
+      // At the top, in the colour used for "something needs attention". Edits
+      // live only in this page until they are written, and a tab closed here
+      // loses them with nothing to undo.
+      const strong = document.createElement('strong');
+      strong.textContent = t('nvs.unsaved', { count: pending.length });
+      unsaved.append(strong, document.createTextNode(` ${t('nvs.unsaved.hint')}`));
+    }
 
     const apply = document.createElement('button');
-    apply.className = 'primary';
-    apply.textContent = t('nvs.apply');
+    apply.className = this._onApply && pending.length > 0 ? 'primary urgent' : 'primary';
+    apply.textContent =
+      pending.length > 0 ? t('nvs.apply.count', { count: pending.length }) : t('nvs.apply');
     apply.disabled = !this._onApply || pending.length === 0;
     apply.title = this._onApply ? t('nvs.apply.hint') : t(this._blocker ?? 'writeback.readonly');
     apply.addEventListener('click', () => this._onApply?.(store));

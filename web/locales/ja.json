@@ -265,7 +265,6 @@
   "fs.apply": "書き戻し",
   "fs.apply.hint": "編集内容からパーティションイメージ全体を再構築し、現在の内容をバックアップしてから書き込みます。",
   "fs.revert": "編集を破棄",
-  "fs.pending": "未適用の変更 {count} 件",
   "confirm.fsChanges": "ファイルシステムを再構築し、パーティション全体を書き換えます。空き領域はゼロで埋めるので、削除したファイルは残りません。",
   "error.FS_CAPACITY": "ファイルがパーティションに収まりません。",
   "error.FS_PATH": "このファイルシステムに保存できないパスです。",
@@ -283,5 +282,15 @@
   "writeback.noPartition": "このイメージの背後にパーティションが無いため、書き戻す先がありません。その場で編集するには、デバイスから読み出してください。",
   "writeback.disconnected": "未接続です。変更を書き戻すには、このパーティションを持つデバイスに接続してください。",
   "writeback.noStub": "flasher stub が動いていません。消去と書き込みには stub が必要です。接続し直すと読み込まれます。",
-  "writeback.readonly": "読み取り専用です。"
+  "writeback.readonly": "読み取り専用です。",
+  "op.differentDevice": "別のデバイスが接続されました。前のデバイスから読み出した内容（バッファ {dropped} 件）は破棄しました。**別のボードに誤って書き込むことはありません。** 取り込んだファイルは残しています。",
+  "fs.unsaved": "未反映の変更が {count} 件あります。",
+  "fs.unsaved.hint": "この画面の中にしかありません。「書き戻し」で送るか「編集を破棄」で捨ててください。タブを閉じると失われます。",
+  "fs.apply.count": "書き戻し（{count}）",
+  "fs.state.added": "追加",
+  "fs.state.modified": "変更",
+  "fs.state.deleted": "削除",
+  "nvs.unsaved": "未反映の変更が {count} 件あります。",
+  "nvs.unsaved.hint": "この画面の中にしかありません。「書き戻し」で送るか「取り消し」で捨ててください。タブを閉じると失われます。",
+  "nvs.apply.count": "書き戻し（{count}）"
 }

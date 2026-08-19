@@ -95,6 +95,18 @@ library against fixtures and a mock the library itself produced.
   bad cable. `EspLoader` now queues whole operations, and the web app refuses
   to start a second one rather than queuing a destructive write behind a long
   read.
+- **Reconnecting to a different board kept the previous one's data.** The
+  partition table, the buffers and any pending edits stayed on screen with
+  their write-back controls live, pointed at a device the data never came from
+  — one board's NVS was one click from being written into another. Device
+  identity is now checked on connect, and anything read from a board that is no
+  longer attached is discarded. Imported files are kept, and a board that
+  cannot be identified is assumed to be a new one.
+- **Unsaved edits were too quiet to notice.** A small accent-coloured count
+  beside a button, and a faint tint on changed rows, read as information rather
+  than as "this has not reached the device". Both editors now open with a
+  warning bar, mark each changed row with a stripe and the word for what
+  changed, and carry the count on the write-back button itself.
 - **Every editor went read-only the moment its data arrived.** Reading a
   partition selects the resulting buffer rather than the partition, and a
   buffer had forgotten which partition it came from — so the NVS edit buttons

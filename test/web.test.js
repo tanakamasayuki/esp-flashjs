@@ -20,6 +20,7 @@ import {
 } from '../web/format-values.js';
 import { zip, toDosTimestamp } from '../web/zip.js';
 import { writeBackBlocker, WRITE_BACK_BLOCKERS } from '../web/write-back.js';
+import { discardOtherDeviceState } from '../web/device-session.js';
 import { decodeTextFile } from '../web/format-values.js';
 
 /* -------------------------------------------------------------------------- */
@@ -392,15 +393,97 @@ test('having nowhere to write outranks being disconnected', () => {
   );
 });
 
-test('every reason has something to say in every language', () => {
-  // These keys are chosen at runtime, so the locale lint — which only sees
-  // literal t('...') calls — cannot cover them.
+test('every runtime-chosen message exists in every language', () => {
+  // These keys are built at runtime, so the locale lint — which only sees
+  // literal t('...') calls — cannot cover them. A missing one renders as the
+  // key itself, which looks like text rather than like a bug.
+  const dynamic = [
+    ...WRITE_BACK_BLOCKERS,
+    'fs.state.added',
+    'fs.state.modified',
+    'fs.state.deleted',
+  ];
   for (const file of ['en', 'ja', 'zh-Hans', 'zh-Hant']) {
     const catalogue = JSON.parse(
       readFileSync(new URL(`../web/locales/${file}.json`, import.meta.url), 'utf8'),
     );
-    for (const key of WRITE_BACK_BLOCKERS) {
+    for (const key of dynamic) {
       assert.ok(catalogue[key], `${file}.json is missing ${key}`);
     }
   }
+});
+
+/* -------------------------------------------------------------------------- */
+/* Changing boards                                                             */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * @param {object} [over]
+ * @returns {any}
+ */
+function session(over = {}) {
+  return {
+    session: { deviceId: 'aa:bb:cc:dd:ee:ff' },
+    buffers: new Map([
+      ['b1', { source: 'device' }],
+      ['b2', { source: 'file' }],
+    ]),
+    partitions: { table: {}, source: 'device' },
+    selection: { kind: 'buffer', id: 'b1' },
+    ...over,
+  };
+}
+
+test('reconnecting to the same board keeps what was read from it', () => {
+  assert.equal(discardOtherDeviceState(session(), 'aa:bb:cc:dd:ee:ff'), null);
+});
+
+test('a different board discards its predecessor and keeps imported files', () => {
+  // The reason this matters is not tidiness. Everything left on screen keeps
+  // its write-back controls, pointed at a device the data never came from.
+  const reset = discardOtherDeviceState(session(), '11:22:33:44:55:66');
+  assert.ok(reset);
+  assert.deepEqual([...reset.changes.buffers.keys()], ['b2']);
+  assert.equal(reset.dropped, 1);
+  assert.deepEqual(reset.changes.partitions, { table: null, source: null });
+  assert.deepEqual(reset.changes.selection, { kind: null, id: null });
+});
+
+test('an identity that cannot be established is not treated as the same board', () => {
+  // "Unknown" and "same" are the two readings, and only one of them can
+  // destroy something.
+  const reset = discardOtherDeviceState(session(), null);
+  assert.ok(reset, 'a board that will not say who it is has to be assumed new');
+  assert.equal(reset.dropped, 1);
+});
+
+test('a partition table read from a file survives a change of board', () => {
+  const reset = discardOtherDeviceState(
+    session({ partitions: { table: {}, source: 'file' } }),
+    '11:22:33:44:55:66',
+  );
+  assert.ok(reset);
+  assert.deepEqual(reset.changes.partitions, { table: {}, source: 'file' });
+});
+
+test('a selection that survives the discard is left alone', () => {
+  const reset = discardOtherDeviceState(
+    session({ selection: { kind: 'buffer', id: 'b2' } }),
+    '11:22:33:44:55:66',
+  );
+  assert.ok(reset);
+  assert.deepEqual(reset.changes.selection, { kind: 'buffer', id: 'b2' });
+});
+
+test('nothing to discard means nothing is reported', () => {
+  const reset = discardOtherDeviceState(
+    {
+      session: { deviceId: null },
+      buffers: new Map([['b2', { source: 'file' }]]),
+      partitions: { table: null, source: null },
+      selection: { kind: null, id: null },
+    },
+    'aa:bb:cc:dd:ee:ff',
+  );
+  assert.equal(reset, null, 'a first connection is not a change of board');
 });

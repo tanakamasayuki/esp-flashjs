@@ -35,8 +35,17 @@ const TEMPLATE = `
   tr.dir td.path { color: var(--fg-muted); }
   tr.dir td.path::after { content: '/'; }
   tr.partial { background: color-mix(in srgb, var(--warn) 10%, transparent); }
-  tr.added { background: color-mix(in srgb, var(--ok, #3fb950) 12%, transparent); }
-  tr.modified { background: color-mix(in srgb, var(--accent, #58a6ff) 12%, transparent); }
+  /* A tint alone was too quiet to read as "not written yet", and a tint alone
+     says nothing to anyone who cannot separate the two colours. Every changed
+     row gets a stripe, a word, and a tint. */
+  tr.added td:first-child, tr.modified td:first-child, tr.deleted td:first-child {
+    box-shadow: inset 3px 0 0 var(--warn);
+  }
+  tr.added { background: color-mix(in srgb, var(--warn) 14%, transparent); }
+  tr.modified { background: color-mix(in srgb, var(--warn) 14%, transparent); }
+  tr.deleted { background: color-mix(in srgb, var(--warn) 8%, transparent); }
+  .state { font-size: 10px; padding: 1px 5px; border-radius: 3px; margin-left: 6px;
+           background: var(--warn); color: var(--bg); font-weight: 600; }
   /* On the name alone: a decoration set on the cell is drawn across anything
      appended to it, including the badge that explains why the row looks like
      this, and a child cannot switch it off again. */
@@ -53,7 +62,17 @@ const TEMPLATE = `
   button.primary { border-color: var(--accent, #58a6ff); }
   .toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
   .geometry { color: var(--fg-muted); font-size: 11px; font-family: var(--mono, ui-monospace, monospace); }
-  .pending { color: var(--accent, #58a6ff); font-size: 11px; }
+  .unsaved {
+    display: flex; align-items: center; gap: 8px; margin: 0 0 8px;
+    padding: 7px 10px; border-radius: 4px; font-size: 12px; line-height: 1.5;
+    border: 1px solid var(--warn);
+    background: color-mix(in srgb, var(--warn) 16%, transparent);
+  }
+  .unsaved strong { font-weight: 600; }
+  button.primary.urgent {
+    border-color: var(--warn); background: color-mix(in srgb, var(--warn) 22%, transparent);
+    font-weight: 600;
+  }
   .empty { color: var(--fg-muted); padding: 8px; }
   ul.issues { margin: 8px 0 0; padding-left: 18px; color: var(--warn); font-size: 12px; }
   ul.issues li.error { color: var(--error, #f85149); }
@@ -68,6 +87,7 @@ const TEMPLATE = `
   .editor-bar .where { color: var(--fg-muted); font-size: 11px;
                        font-family: var(--mono, ui-monospace, monospace); }
 </style>
+<p class="unsaved" id="unsaved" hidden></p>
 <div class="toolbar" id="toolbar"></div>
 <div id="body"></div>
 <ul class="issues" id="issues" hidden></ul>
@@ -178,13 +198,26 @@ export class EspFsTree extends HTMLElement {
     const toolbar = /** @type {HTMLElement} */ (root.getElementById('toolbar'));
     const body = /** @type {HTMLElement} */ (root.getElementById('body'));
     const issueList = /** @type {HTMLElement} */ (root.getElementById('issues'));
+    const unsaved = /** @type {HTMLElement} */ (root.getElementById('unsaved'));
     toolbar.replaceChildren();
     body.replaceChildren();
     issueList.replaceChildren();
     issueList.hidden = true;
+    unsaved.replaceChildren();
+    unsaved.hidden = this._changed.size === 0;
 
     const image = this._image;
     if (!image) return;
+
+    if (this._changed.size > 0) {
+      // Stated at the top, in the colour used for "something needs attention",
+      // rather than as a small note beside a button. Edits live only in this
+      // page until they are written, and a tab closed at this point loses them
+      // with nothing to undo.
+      const strong = document.createElement('strong');
+      strong.textContent = t('fs.unsaved', { count: this._changed.size });
+      unsaved.append(strong, document.createTextNode(` ${t('fs.unsaved.hint')}`));
+    }
 
     const rows = this._rows();
     const files = rows.filter((row) => !row.directory && row.state !== 'deleted');
@@ -294,8 +327,10 @@ export class EspFsTree extends HTMLElement {
     const pending = this._changed.size;
 
     const apply = document.createElement('button');
-    apply.className = 'primary';
-    apply.textContent = t('fs.apply');
+    apply.className = pending > 0 ? 'primary urgent' : 'primary';
+    // The count belongs on the control that clears it, not only in a label
+    // somewhere else on the page.
+    apply.textContent = pending > 0 ? t('fs.apply.count', { count: pending }) : t('fs.apply');
     apply.title = t('fs.apply.hint');
     apply.disabled = pending === 0;
     apply.addEventListener('click', () => {
@@ -311,15 +346,7 @@ export class EspFsTree extends HTMLElement {
       this._render();
     });
 
-    /** @type {HTMLElement[]} */
-    const out = [add, apply, revert];
-    if (pending > 0) {
-      const label = document.createElement('span');
-      label.className = 'pending';
-      label.textContent = t('fs.pending', { count: pending });
-      out.push(label);
-    }
-    return out;
+    return [add, apply, revert];
   }
 
   /**
@@ -354,6 +381,14 @@ export class EspFsTree extends HTMLElement {
       name.className = 'name';
       name.textContent = row.path;
       path.append(name);
+      if (row.state) {
+        // Said in a word as well as shown in a colour. Which of the three it
+        // is matters, and a background tint cannot say it.
+        const badge = document.createElement('span');
+        badge.className = 'state';
+        badge.textContent = t(`fs.state.${row.state}`);
+        path.append(badge);
+      }
       if (!row.complete && !row.directory) {
         const flag = document.createElement('span');
         flag.className = 'flag';

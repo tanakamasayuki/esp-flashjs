@@ -26,6 +26,7 @@ import {
 } from './esp-flashjs.js';
 import { store, BAUD_RATES, rememberBaudRate } from './store.js';
 import { t } from './i18n.js';
+import { discardOtherDeviceState } from './device-session.js';
 
 /** @type {EspLoader|null} */
 let loader = null;
@@ -72,6 +73,13 @@ export async function connect() {
     flash = new EspFlash(loader);
     const info = await flash.getInfo();
 
+    // Everything on screen describes one particular board. Carrying it over to
+    // a different one is not merely untidy: the partition table, the buffers
+    // and any half-finished edits would still be offered for writing back, to
+    // a device they did not come from. The MAC is the identity — it is in
+    // eFuse, so it is available before anything else is read.
+    forgetOtherDevice(info.mac);
+
     // Only now, with the stub running, is it worth going faster.
     const requested = store.getState().device.baudRate;
     const linkBaudRate = await raiseLinkSpeed(requested);
@@ -86,6 +94,7 @@ export async function connect() {
         linkBaudRate,
       },
       flash: { size: info.flashSize },
+      session: { deviceId: info.mac ?? null },
     });
     store.log('info', 'op.connected');
 
@@ -474,6 +483,23 @@ export async function writeFilesystem(partition, fs, source) {
   // the rebuild produced.
   await readPartition(partition);
   return true;
+}
+
+/**
+ * Drops everything belonging to a board that is no longer the one attached.
+ *
+ * Anything read from a file stays: it was never about a particular device, and
+ * throwing away a firmware image someone imported because they plugged in a
+ * different board would be its own kind of surprise.
+ *
+ * @param {string|null|undefined} mac Identity of the device now attached.
+ */
+function forgetOtherDevice(mac) {
+  const reset = discardOtherDeviceState(store.getState(), mac);
+  if (!reset) return;
+
+  store.setState(/** @type {Partial<import('./store.js').AppState>} */ (reset.changes));
+  store.log('warn', 'op.differentDevice', { dropped: reset.dropped });
 }
 
 /**
