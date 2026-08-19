@@ -18,6 +18,8 @@ import { readFile, readdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { checkCoreDump } from './check-coredump.mjs';
+
 const [, , dir, csvPath] = process.argv;
 if (!dir) {
   console.error('usage: node verify-fixture.mjs <fixture-dir> [partitions.csv]');
@@ -99,7 +101,7 @@ if (!table) {
 }
 
 /** Regions that must contain something for the fixture to be useful. */
-const mustHaveData = ['nvs', 'app0', 'bootarea'];
+const mustHaveData = ['nvs', 'app0', 'bootarea', 'coredump'];
 /** Regions that are allowed to be blank, with a note explaining why. */
 const mayBeBlank = { app1: 'unwritten second OTA slot, which is the point' };
 
@@ -238,6 +240,31 @@ for (const name of ['spiffs', 'littlefs', 'ffat']) {
   if (missing.length > 0) {
     problems.push(`${name}.bin is missing ${missing.join(', ')} — the tree was not written`);
   }
+}
+
+/* -------------------------------------------------------------------------- */
+/* The core dump                                                                */
+/* -------------------------------------------------------------------------- */
+
+// The one region here whose contents are RAM rather than constants this sketch
+// chose. Everything else is safe to commit by construction; this has to be read
+// first. The checker is byte-level and imports nothing from `src/`, so it can
+// fail honestly — there is no core dump parser for it to agree with.
+
+const coredump = await load('coredump.bin');
+if (coredump && !isUniform(coredump, 0xff)) {
+  const report = checkCoreDump(coredump);
+  console.log(
+    `\ncore dump: ${report.facts.totalLen} bytes, ${report.facts.elfType ?? report.facts.format}` +
+      `, checksum ${report.facts.checksum}`,
+  );
+  problems.push(...report.problems.map((p) => `coredump: ${p}`));
+  notes.push(...report.notes.map((n) => `coredump: ${n}`));
+
+  // Printed rather than judged. A machine cannot tell a task name from a
+  // secret, and the point of the list is that a person looks at it once.
+  console.log(`      strings (${report.strings.length}), read them before committing:`);
+  for (const text of report.strings) console.log(`        ${text}`);
 }
 
 /* -------------------------------------------------------------------------- */

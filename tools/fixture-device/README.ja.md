@@ -75,6 +75,40 @@ flash: 4194304
 FIXTURE COMPLETE - safe to capture now
 ```
 
+ここに到達するまでにブートが2回走ります。コアダンプは**実際にクラッシュしないと生成されない**ためです。
+
+```text
+boot 1   NVS と3つのファイルシステムを書いたあと、意図的に abort() する。
+         panic ハンドラがコアダンプを書き、再起動する。
+boot 2   esp_reset_reason() が ESP_RST_PANIC なので、プロビジョニングは飛ばす。
+         書き込まれたダンプについて報告し、FIXTURE COMPLETE を出す。
+```
+
+**シリアルモニタに出る panic とバックトレースは想定どおりです。** 2回目のブートが出す次の情報は取っておく価値があります。
+
+```text
+=== Core dump
+  flash offset  0x280000
+  length        10884  (bytes, including the trailing checksum)
+  checksum      valid
+  panic reason  abort() was called at PC 0x42002db1 on core 1
+  crashed task  loopTask
+  dump version  590082
+```
+
+これらの数値は ESP-IDF が自分の書いたバイト列を読み直して出したものであり、**この fixture について、このプロジェクトが間違えようのない唯一の証言**です。あとからコアダンプのパーサを書くなら、これに一致しなければなりません。
+
+panic 以外の理由でリセットすると、プロビジョニング → クラッシュ → 報告のサイクルが最初からやり直され、同じ状態に落ち着きます。`capture.sh` はチップを stub に留める（`--after no-reset`）ので、このサイクルを起こしません。
+
+**ESP32-P4 では、この出力は esptool が使うポートに届きません。** P4 は `USB CDC On Boot` が既定で無効なので `Serial` は UART0 に出る一方、`/dev/ttyACM*` は USB-Serial/JTAG 側だからです。スケッチ自体は正常に動作し（有効なコアダンプがフラッシュに残ります）、単に見えないだけです。この場合はフラッシュ側で確認します。
+
+```sh
+esptool --port /dev/ttyACM2 --after no-reset read-flash 0x280000 0x10000 /tmp/cd.bin
+node tools/fixture-device/check-coredump.mjs /tmp/cd.bin
+```
+
+ダンプが存在して CRC が通れば、両方のブートが完了しています。
+
 ### 3. 吸い出す
 
 **シリアルモニタを閉じてから**実行してください（ポートを掴んでいると失敗します）。
@@ -183,10 +217,15 @@ PORT=/dev/ttyACM1 ./tools/fixture-device/capture.sh   # ESP32-P4
 | `otadata.bin` | 8 KB | ROM の CRC 規約。factory が無いので bootloader が実際に書き込む |
 | `app0.bin` | 64 KB | ESP イメージのヘッダ・セグメント・SHA-256・app description |
 | `app1.bin` | 64 KB | 未書き込み（消去済みの見え方） |
+| `coredump.bin` | 64 KB | panic ハンドラが書いた ELF コアダンプ。CRC-32 付き |
 | `spiffs.bin` | 320 KB | SPIFFS |
 | `littlefs.bin` | 320 KB | LittleFS |
 | `ffat.bin` | 832 KB | FAT + wear levelling |
 | `MANIFEST.txt` | — | チップ・取得日時・esptool 版・各ファイルの sha256 |
+
+**`coredump.bin` は、ここで唯一再現しないファイルです。** 他は全部このスケッチが選んだ固定の定数なので、同じボードを2回吸い出せばバイト単位で一致します。コアダンプはクラッシュ時点の RAM そのもので、同じバイナリを2回走らせたところ、長さは同じ 10884 バイトでありながら **205 バイトが違いました**（スタックの残骸、タイマ値、タスク状態）。テストは「パーサが何を読み取るか」と「CRC が通るか」を検査してよいですが、バイト列を期待値にしてはいけません。
+
+同じ理由で、**構成上安全と言い切れず、コミット前に中身を実際に読む必要がある唯一のファイル**でもあります（[コミットするとき](#コミットするとき)）。
 
 app パーティションは先頭 64 KB だけ取得します（`APP_HEAD` で変更可）。イメージ解析に必要なもの（マジック・セグメント表・chip id・SHA-256 マーカー・app description）はすべて先頭数 KB にあり、残りはビルド済みコードで環境依存が大きく、しかも **fixture 一式のうち唯一まともに圧縮されない部分**です。3機種で実測したところ app0 だけでリポジトリ負荷の 96% を占めていました。0xFF だらけの領域は git が潰すので、全体では 4.9 MB / 圧縮後 50 KB 程度に収まります。
 
@@ -244,8 +283,31 @@ node tools/hardware-check.mjs /dev/ttyUSB0 --rebuild
 
 ## コミットするとき
 
+```sh
+node tools/fixture-device/verify-fixture.mjs \
+  test/fixtures/hardware/esp32s3 \
+  tools/fixture-device/fixture_device/partitions.csv
+```
+
+CSV とのレイアウト一致、データが入っているべき領域に入っていること、各ファイルシステムイメージが名乗りどおりの形式であること、NVS に 150 キーと消去済みエントリが残っていることを検査します。そのうえで:
+
 1. `MANIFEST.txt` を確認する
 2. 想定どおりのサイズか確認する（全部 0xFF なら書き込みが効いていない）
-3. `test/fixtures/hardware/<chip>/` ごとコミットする
+3. **コアダンプの文字列を読む。** `verify-fixture.mjs` が出力します。単体で走らせるなら
+   `node tools/fixture-device/check-coredump.mjs <dir>/coredump.bin`
+4. `test/fixtures/hardware/<chip>/` ごとコミットする
+
+3 は形式的な手順ではありません。他の領域はこのスケッチが選んだ定数なので構成上安全ですが、コアダンプは RAM であり、「秘密が入りようがない」は仮定ではなく検査すべき事柄です。
+
+**どちらのボードでも、どのバイト順でも MAC アドレスは不在**でした。このビルドは `CONFIG_ESP_COREDUMP_CAPTURE_DRAM` を有効にしておらず、タスクスタックと TCB しか採らないうえ、キャッシュされたベース MAC は `.bss` にあるためです。ただし2機種の中身は同じではありませんでした。
+
+| | ESP32-S3 | ESP32-P4 |
+| --- | --- | --- |
+| ダンプ長 | 10884 バイト | 5188 バイト |
+| 文字列 | タスク名、ELF note 名、panic メッセージ | 同左 **＋ `k149` とバイトカウンタの断片** |
+
+`k149` はこのスケッチが書く最後の NVS キー、カウンタは `/big.bin` の中身です。つまり P4 では、クラッシュしたタスクのスタックに直前のプロビジョニングの残骸が残っていました。ここでは値をスケッチが選んでいるので無害です。重要なのは、**スタックに何が残るかはアプリが直前に何をしていたかで決まる**ということで、一度考えて安全と決めつけられる性質のものではありません。だからこの文書でチェック済みにするのではなく、取得のたびに文字列を出力します。
+
+`check-coredump.mjs` は `--mac aa:bb:cc:dd:ee:ff` で特定のアドレスを探せます。ESP-IDF がベースアドレスから導出するインタフェース MAC も含めて検索します。
 
 fixture を差し替えたときは、それに依存するテストの期待値も更新してください。**期待値を実装の出力に合わせて書き換えるのは本末転倒**です。実機がこう返した、という事実の側を正としてください。

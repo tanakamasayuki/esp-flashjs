@@ -13,11 +13,28 @@
 //
 // After flashing, open the serial monitor at 115200 and wait for
 // "FIXTURE COMPLETE" before capturing, then run ../capture.sh.
+//
+// The sketch runs in two acts, because a core dump can only be produced by
+// actually crashing:
+//
+//   boot 1  provision NVS and the three filesystems, then abort() on purpose.
+//           The panic handler writes a core dump into the coredump partition
+//           and reboots.
+//   boot 2  esp_reset_reason() is ESP_RST_PANIC, so provisioning is skipped.
+//           The device reports what it wrote, and prints FIXTURE COMPLETE.
+//
+// A capture is therefore taken on the second boot, and "FIXTURE COMPLETE"
+// still means exactly what it meant before: everything is in flash, nothing is
+// still being written. Power-cycling starts the cycle over, which re-provisions
+// and re-crashes and ends up in the same place.
 
 #include <Preferences.h>
 #include <SPIFFS.h>
 #include <LittleFS.h>
 #include <FFat.h>
+
+#include <esp_core_dump.h>
+#include <esp_system.h>
 
 // Anything the tests assert on must be reproducible byte for byte, so every
 // value here is a fixed constant. No timestamps, no random data, no MAC.
@@ -154,6 +171,70 @@ static void writeTree(fs::FS &fs, const char *label) {
   }
 }
 
+/**
+ * What the device itself says about the core dump it just wrote.
+ *
+ * This is the only report in the whole fixture pipeline that this project
+ * cannot influence: the address, the length and the checksum verdict all come
+ * from ESP-IDF reading its own bytes back. A core dump parser written later
+ * has to agree with these numbers, and if it does not, it is the parser that
+ * is wrong. Printing them now costs nothing and is the difference between a
+ * fixture and a fixture with a known-good answer beside it.
+ *
+ * @return true when a valid dump is in flash.
+ */
+static bool reportCoreDump() {
+  banner("Core dump");
+
+  size_t addr = 0;
+  size_t size = 0;
+  esp_err_t found = esp_core_dump_image_get(&addr, &size);
+  if (found != ESP_OK) {
+    Serial.print("  MISSING: ");
+    Serial.println(esp_err_to_name(found));
+    Serial.println("  Is there a 'coredump' partition in partitions.csv?");
+    return false;
+  }
+
+  Serial.print("  flash offset  0x");
+  Serial.println((uint32_t)addr, HEX);
+  Serial.print("  length        ");
+  Serial.print((uint32_t)size);
+  Serial.println("  (bytes, including the trailing checksum)");
+
+  // Re-reads the whole image and recomputes the checksum. ESP_OK here means
+  // the bytes now in flash are the bytes the panic handler intended to write.
+  esp_err_t intact = esp_core_dump_image_check();
+  Serial.print("  checksum      ");
+  Serial.println(intact == ESP_OK ? "valid" : esp_err_to_name(intact));
+
+  // Guarded because ESP-IDF only declares these two for a flash-resident dump
+  // in ELF format. That is how every chip in this table is configured, but a
+  // board built the other way should fail with a clear message at runtime
+  // rather than with a compile error in a sketch that is otherwise fine.
+#if CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH && CONFIG_ESP_COREDUMP_DATA_FORMAT_ELF
+  char reason[128] = {0};
+  if (esp_core_dump_get_panic_reason(reason, sizeof(reason)) == ESP_OK) {
+    Serial.print("  panic reason  ");
+    Serial.println(reason);
+  }
+
+  esp_core_dump_summary_t summary;
+  if (esp_core_dump_get_summary(&summary) == ESP_OK) {
+    Serial.print("  crashed task  ");
+    Serial.println(summary.exc_task);
+    Serial.print("  exception pc  0x");
+    Serial.println(summary.exc_pc, HEX);
+    Serial.print("  dump version  ");
+    Serial.println(summary.core_dump_version);
+  }
+#else
+  Serial.println("  (this build stores core dumps in some other format)");
+#endif
+
+  return intact == ESP_OK;
+}
+
 void setup() {
   Serial.begin(115200);
   delay(2000);
@@ -163,6 +244,21 @@ void setup() {
   Serial.println(ESP.getChipModel());
   Serial.print("flash: ");
   Serial.println(ESP.getFlashChipSize());
+
+  // Act two. Coming back from our own crash means everything is already in
+  // flash; provisioning again would only rewrite it and produce a second core
+  // dump for no reason.
+  if (esp_reset_reason() == ESP_RST_PANIC) {
+    Serial.println("reset reason: panic - this is the boot after the deliberate crash");
+    if (reportCoreDump()) {
+      Serial.println();
+      Serial.println("FIXTURE COMPLETE - safe to capture now");
+    } else {
+      Serial.println();
+      Serial.println("FIXTURE INCOMPLETE - no valid core dump, do not capture");
+    }
+    return;
+  }
 
   provisionNvs();
 
@@ -206,8 +302,22 @@ void setup() {
     Serial.println("\n=== FatFS: unavailable (partition may be too small)");
   }
 
+  // Act one ends here, on purpose.
+  //
+  // A core dump partition is only interesting once something has written to
+  // it, and the only thing that writes to it is a panic. abort() is used
+  // rather than a null dereference or a divide by zero because it cannot be
+  // optimised away and it reaches the panic handler by the same path on every
+  // architecture in the table — the Xtensa chips and the RISC-V ones alike.
+  //
+  // Nothing after this line runs. The panic handler writes the dump, prints a
+  // backtrace and reboots, and setup() starts again at the branch above.
   Serial.println();
-  Serial.println("FIXTURE COMPLETE - safe to capture now");
+  Serial.println("provisioned - crashing on purpose to write a core dump");
+  Serial.println("(the panic and backtrace below are expected)");
+  Serial.flush();
+  delay(100);
+  abort();
 }
 
 void loop() {

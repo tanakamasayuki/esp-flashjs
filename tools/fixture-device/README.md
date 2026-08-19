@@ -65,6 +65,49 @@ arduino-cli upload --fqbn esp32:esp32:esp32 -p /dev/ttyUSB0 fixture_device
 Open the serial monitor at 115200 and wait for **`FIXTURE COMPLETE`**.
 Capturing early bakes a half-written state into the fixture.
 
+The sketch gets there in two boots, because a core dump can only be produced by
+actually crashing:
+
+```text
+boot 1   provision NVS and the three filesystems, then abort() on purpose.
+         The panic handler writes a core dump and reboots.
+boot 2   esp_reset_reason() is ESP_RST_PANIC, so provisioning is skipped.
+         The device reports the dump it wrote, then FIXTURE COMPLETE.
+```
+
+**The panic and backtrace on the serial monitor are expected.** What the second
+boot prints is worth keeping:
+
+```text
+=== Core dump
+  flash offset  0x280000
+  length        10884  (bytes, including the trailing checksum)
+  checksum      valid
+  panic reason  abort() was called at PC 0x42002db1 on core 1
+  crashed task  loopTask
+  dump version  590082
+```
+
+Those numbers come from ESP-IDF reading back its own bytes, which makes them
+the one account of this fixture that this project cannot have got wrong. A core
+dump parser written later has to agree with them.
+
+A reset for any other reason starts the cycle over — provision, crash, report —
+and ends in the same state. `capture.sh` avoids triggering that by leaving the
+chip in the stub (`--after no-reset`).
+
+**On an ESP32-P4 none of this reaches the port esptool uses.** `USB CDC On Boot`
+is off by default there, so `Serial` goes to UART0 while the `/dev/ttyACM*` node
+is the USB-Serial/JTAG interface. The sketch runs correctly — a valid core dump
+lands in flash — you simply cannot watch it. Check the flash instead:
+
+```sh
+esptool --port /dev/ttyACM2 --after no-reset read-flash 0x280000 0x10000 /tmp/cd.bin
+node tools/fixture-device/check-coredump.mjs /tmp/cd.bin
+```
+
+A dump that is present and passes its CRC means both acts completed.
+
 ### 3. Capture
 
 **Close the serial monitor first** — a held port makes the read fail.
@@ -202,10 +245,22 @@ PORT=/dev/ttyACM1 ./tools/fixture-device/capture.sh   # ESP32-P4
 | `otadata.bin` | 8 KB | The ROM CRC convention. With no factory partition the bootloader really does write this |
 | `app0.bin` | 64 KB | Image header, segments, SHA-256, app description |
 | `app1.bin` | 64 KB | Unwritten, so erased flash has a reference too |
+| `coredump.bin` | 64 KB | An ELF core dump written by the panic handler, with its CRC-32 |
 | `spiffs.bin` | 320 KB | SPIFFS |
 | `littlefs.bin` | 320 KB | LittleFS |
 | `ffat.bin` | 832 KB | FAT with wear levelling |
 | `MANIFEST.txt` | — | Chip, timestamp, esptool version, sha256 of each file |
+
+**`coredump.bin` is the one file here that is not reproducible.** Everything
+else is a fixed constant this sketch chose, so two captures of the same board
+agree byte for byte. A core dump is RAM at the moment of the crash: two runs of
+the same binary produced dumps of the same length, 10884 bytes, that differed
+in 205 of them — stack leftovers, timer values, task states. A test may assert
+what a parser makes of it and that the CRC verifies; it must not assert bytes.
+
+That is also why it is the one file that has to be **read** before it is
+committed rather than trusted by construction — see
+[before committing](#before-committing).
 
 App partitions are captured head-only (`APP_HEAD`, default 64 KB). Everything
 the image parser needs — magic, segment table, chip id, the SHA-256 marker,
@@ -286,9 +341,47 @@ produce, which is the entire reason they exist.
 
 ## Before committing
 
+```sh
+node tools/fixture-device/verify-fixture.mjs \
+  test/fixtures/hardware/esp32s3 \
+  tools/fixture-device/fixture_device/partitions.csv
+```
+
+It checks the layout against the CSV, that every region that should hold data
+does, that each filesystem image is the filesystem it claims to be, and that
+NVS still contains all 150 keys and its erased entries. Then:
+
 1. Read `MANIFEST.txt`
 2. Check the sizes look right — all 0xFF means the write did not take
-3. Commit the whole `test/fixtures/hardware/<chip>/` directory
+3. **Read the core dump's strings.** `verify-fixture.mjs` prints them, or run
+   `node tools/fixture-device/check-coredump.mjs <dir>/coredump.bin` on its own
+4. Commit the whole `test/fixtures/hardware/<chip>/` directory
+
+Step 3 is not a formality. Every other region here holds constants this sketch
+chose, so it is safe to commit by construction; a core dump holds RAM, and the
+argument that nothing secret can be in it has to be checked rather than
+assumed.
+
+Neither board carried a MAC address in any byte order — this build does not set
+`CONFIG_ESP_COREDUMP_CAPTURE_DRAM`, so only task stacks and TCBs are captured,
+and the cached base MAC lives in `.bss`. But the two boards did not carry the
+same things:
+
+| | ESP32-S3 | ESP32-P4 |
+| --- | --- | --- |
+| Dump size | 10884 bytes | 5188 bytes |
+| Strings | task names, ELF note names, the panic message | the same, **plus `k149` and runs of the byte counter** |
+
+`k149` is the last NVS key this sketch writes and the counter is what it fills
+`/big.bin` with, so on the P4 the crashing task's stack still held remnants of
+the provisioning it had just finished. Harmless here, because the sketch chose
+those values. The point is that what ends up on a stack depends on what the
+application was doing, so it cannot be reasoned out once and trusted after —
+which is why the strings are printed on every capture rather than checked off
+in this document.
+
+`check-coredump.mjs` takes `--mac aa:bb:cc:dd:ee:ff` to search for a specific
+address, including the interface MACs ESP-IDF derives from it.
 
 When you replace a fixture, update the tests that depend on it. **Do not adjust
 the expectations to match the implementation's output** — the device's bytes are
