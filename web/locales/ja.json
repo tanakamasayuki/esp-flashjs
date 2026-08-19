@@ -254,7 +254,7 @@
   "nvs.change.deleted": "削除",
   "nvs.change.renamed": "改名",
   "confirm.nvsChanges": "NVS の {count} 件のエントリが変わります。パーティションは全体を再構築して書き直します。",
-  "diff.needTwo": "比較するにはバッファが2つ必要です。書き込み後なら、バックアップと読み直しの2つが揃っています。",
+  "diff.needTwo": "まだ比較するものがありません。パーティションを読み出す、ファイルを取り込む、またはデバイスに書き込んでください。書き込みは先にバックアップを保存するので、それが比較のもう一方になります。",
   "diff.identical": "完全に一致しています。",
   "diff.summary": "{bytes} バイトが相違 · 最初の相違 {first} · 長さの差 {delta}",
   "diff.offset": "オフセット",
@@ -285,5 +285,9 @@
   "fs.rebuildIncomplete": "{count} 件のファイルはこのイメージから一部しか復元できていません。再構築すると欠損部分がゼロとして書き込まれ、復元不能になります: {paths}",
   "fs.spiffsNoDirectories": "SPIFFS にディレクトリの概念はないため、空のディレクトリ {count} 件は再構築後に残りません: {paths}",
   "fs.spiffsNameTooLong": "{count} 件のパスが SPIFFS の名前長 {limit} バイトを超えています: {paths}",
-  "fs.fatIllegalName": "{count} 件の名前に FAT が記録できない文字が含まれています: {paths}"
+  "fs.fatIllegalName": "{count} 件の名前に FAT が記録できない文字が含まれています: {paths}",
+  "diff.hint": "2つのバイト列を、連続する差分ごとに比較します。読み出し・取り込み・バックアップしたものはすべて対象にでき、左で選択中のものも選べます。",
+  "diff.selection": "選択中: {name} ({size})",
+  "diff.sameSide": "両側が同じバイト列です。比較する相手を別のものにしてください。",
+  "diff.needOneMore": "いまは {have} しかありません。比較相手として、もう1つ読み出す・取り込む・バックアップしてください。"
 }

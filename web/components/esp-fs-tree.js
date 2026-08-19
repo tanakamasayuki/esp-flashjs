@@ -33,7 +33,11 @@ const TEMPLATE = `
   tr.partial { background: color-mix(in srgb, var(--warn) 10%, transparent); }
   tr.added { background: color-mix(in srgb, var(--ok, #3fb950) 12%, transparent); }
   tr.modified { background: color-mix(in srgb, var(--accent, #58a6ff) 12%, transparent); }
-  tr.deleted td.path { text-decoration: line-through; color: var(--fg-muted); }
+  /* On the name alone: a decoration set on the cell is drawn across anything
+     appended to it, including the badge that explains why the row looks like
+     this, and a child cannot switch it off again. */
+  tr.deleted td.path { color: var(--fg-muted); }
+  tr.deleted td.path .name { text-decoration: line-through; }
   .flag { font-size: 10px; padding: 1px 5px; border-radius: 3px; margin-left: 6px;
           background: var(--warn); color: var(--bg); }
   button {
@@ -300,7 +304,10 @@ export class EspFsTree extends HTMLElement {
 
       const path = document.createElement('td');
       path.className = 'path';
-      path.textContent = row.path;
+      const name = document.createElement('span');
+      name.className = 'name';
+      name.textContent = row.path;
+      path.append(name);
       if (!row.complete && !row.directory) {
         const flag = document.createElement('span');
         flag.className = 'flag';

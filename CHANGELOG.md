@@ -52,7 +52,8 @@ library against fixtures and a mock the library itself produced.
   built.
 - **A link-speed control in the web app**, and a filesystem tree with add,
   replace, delete and write-back, an NVS editor and a binary diff view in the
-  inspector.
+  inspector. The diff compares whatever is selected against any other copy
+  loaded, so selecting a different region changes what it shows.
 - **Documentation for writing analyzers and transports**, both with worked
   examples that are executed by the test suite.
 - **`tools/hardware-check.mjs`**, which drives the library against a board and
@@ -82,6 +83,14 @@ library against fixtures and a mock the library itself produced.
   examined.
 - **A partition table's `encrypted` flag was treated as evidence.** It is a
   policy bit that means nothing on a chip with encryption disabled.
+- **The diff view ignored the selection and forgot its own.** It compared two
+  buffers, chosen when it was created — and it was recreated on every store
+  update, so picking a comparison and then reading the other half of it undid
+  the choice. Selecting a different region appeared to do nothing at all.
+- **An erased NVS entry struck through the word "erased".** The strike was set
+  on the table cell, and a text decoration on an ancestor is drawn across
+  everything inside it, so the one word explaining the row was the hardest part
+  of it to read.
 - **A FAT volume whose first directory entry had a long name read as empty.**
   The wear-levelling spare is located by finding real directory entries where
   the boot sector says the root directory is, and that test insisted on an 8.3

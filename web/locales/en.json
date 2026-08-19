@@ -254,7 +254,7 @@
   "nvs.change.deleted": "deleted",
   "nvs.change.renamed": "renamed",
   "confirm.nvsChanges": "{count} NVS entries will change. The partition is rebuilt and rewritten in full.",
-  "diff.needTwo": "Load or read two buffers to compare them. After a write, the backup and the re-read are already here.",
+  "diff.needTwo": "Nothing to compare yet. Read a partition, import a file, or write to the device — a write saves a backup first, which is the other half of the comparison.",
   "diff.identical": "Identical.",
   "diff.summary": "{bytes} bytes differ · first at {first} · length {delta}",
   "diff.offset": "Offset",
@@ -285,5 +285,9 @@
   "fs.rebuildIncomplete": "{count} file(s) were only partly recovered from this image. Rebuilding writes the gaps down as zeros, which makes them permanent: {paths}",
   "fs.spiffsNoDirectories": "SPIFFS has no directories, so {count} empty one(s) will not survive the rebuild: {paths}",
   "fs.spiffsNameTooLong": "{count} path(s) are longer than the {limit} bytes SPIFFS can name: {paths}",
-  "fs.fatIllegalName": "{count} name(s) use characters FAT cannot record: {paths}"
+  "fs.fatIllegalName": "{count} name(s) use characters FAT cannot record: {paths}",
+  "diff.hint": "Compares two sets of bytes, run for run. Anything read, imported or backed up can be a side, and so can whatever is selected on the left.",
+  "diff.selection": "Selected: {name} ({size})",
+  "diff.sameSide": "Both sides are the same bytes. Pick a different one to compare against.",
+  "diff.needOneMore": "Only {have} is available. Read, import or back up one more thing to compare it against."
 }

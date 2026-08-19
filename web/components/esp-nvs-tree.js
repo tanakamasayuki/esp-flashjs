@@ -28,8 +28,12 @@ const TEMPLATE = `
   td.key, td.value, td.type { font-family: var(--mono, ui-monospace, monospace); }
   td.value { word-break: break-all; }
   td.key { padding-left: 22px; }
-  tr.erased { opacity: 0.55; }
-  tr.erased td.key { text-decoration: line-through; }
+  tr.erased { opacity: 0.7; }
+  /* The strike goes on the name alone, never on the cell. A decoration set on
+     an ancestor is drawn across every descendant and cannot be switched off
+     further down, so styling the cell struck through the "erased" badge too
+     and made the one word explaining the row the hardest part to read. */
+  tr.erased td.key .name { text-decoration: line-through; }
   tr.changed { background: color-mix(in srgb, var(--accent) 12%, transparent); }
   .tag { font-size: 10px; padding: 1px 5px; border-radius: 3px; margin-left: 6px;
          background: var(--bg-button); color: var(--fg-muted); }
@@ -202,7 +206,10 @@ export class EspNvsTree extends HTMLElement {
 
     const key = document.createElement('td');
     key.className = 'key';
-    key.textContent = entry.key;
+    const name = document.createElement('span');
+    name.className = 'name';
+    name.textContent = entry.key;
+    key.append(name);
     if (erased) {
       const tag = document.createElement('span');
       tag.className = 'tag';

@@ -254,7 +254,7 @@
   "nvs.change.deleted": "刪除",
   "nvs.change.renamed": "重新命名",
   "confirm.nvsChanges": "將改變 {count} 個 NVS 條目。分割區會被整體重建並重寫。",
-  "diff.needTwo": "需要兩個緩衝區才能比較。寫入後，備份與重新讀取的結果已在此處。",
+  "diff.needTwo": "目前沒有可比較的內容。讀取一個分割區、匯入一個檔案，或向裝置寫入——寫入會先儲存備份，那就是比較的另一側。",
   "diff.identical": "完全相同。",
   "diff.summary": "{bytes} 位元組不同 · 首個差異位於 {first} · 長度差 {delta}",
   "diff.offset": "位移",
@@ -285,5 +285,9 @@
   "fs.rebuildIncomplete": "有 {count} 個檔案只從映像中部分復原。重建會把缺口寫成零，使其無法再復原：{paths}",
   "fs.spiffsNoDirectories": "SPIFFS 沒有目錄概念，因此 {count} 個空目錄不會在重建後保留：{paths}",
   "fs.spiffsNameTooLong": "有 {count} 個路徑超過 SPIFFS 可命名的 {limit} 位元組：{paths}",
-  "fs.fatIllegalName": "有 {count} 個名稱使用了 FAT 無法記錄的字元：{paths}"
+  "fs.fatIllegalName": "有 {count} 個名稱使用了 FAT 無法記錄的字元：{paths}",
+  "diff.hint": "逐段比較兩組位元組。讀取、匯入或備份的任何內容都可以作為一側，左側目前選取的對象也可以。",
+  "diff.selection": "已選取：{name}（{size}）",
+  "diff.sameSide": "兩側是同一組位元組。請另選一個比較對象。",
+  "diff.needOneMore": "目前只有 {have}。請再讀取、匯入或備份一項作為比較對象。"
 }

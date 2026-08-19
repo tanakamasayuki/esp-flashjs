@@ -254,7 +254,7 @@
   "nvs.change.deleted": "删除",
   "nvs.change.renamed": "重命名",
   "confirm.nvsChanges": "将改变 {count} 个 NVS 条目。分区会被整体重建并重写。",
-  "diff.needTwo": "需要两个缓冲区才能比较。写入后，备份与重新读取的结果已在此处。",
+  "diff.needTwo": "暂时没有可比较的内容。读取一个分区、导入一个文件，或向设备写入——写入会先保存备份，那就是比较的另一侧。",
   "diff.identical": "完全相同。",
   "diff.summary": "{bytes} 字节不同 · 首个差异位于 {first} · 长度差 {delta}",
   "diff.offset": "偏移",
@@ -285,5 +285,9 @@
   "fs.rebuildIncomplete": "有 {count} 个文件只从镜像中部分恢复。重建会把缺口写成零，使其无法再恢复：{paths}",
   "fs.spiffsNoDirectories": "SPIFFS 没有目录概念，因此 {count} 个空目录不会在重建后保留：{paths}",
   "fs.spiffsNameTooLong": "有 {count} 个路径超过 SPIFFS 可命名的 {limit} 字节：{paths}",
-  "fs.fatIllegalName": "有 {count} 个名称使用了 FAT 无法记录的字符：{paths}"
+  "fs.fatIllegalName": "有 {count} 个名称使用了 FAT 无法记录的字符：{paths}",
+  "diff.hint": "逐段比较两组字节。读取、导入或备份的任何内容都可以作为一侧，左侧当前选中的对象也可以。",
+  "diff.selection": "已选中：{name}（{size}）",
+  "diff.sameSide": "两侧是同一组字节。请另选一个比较对象。",
+  "diff.needOneMore": "目前只有 {have}。请再读取、导入或备份一项作为比较对象。"
 }

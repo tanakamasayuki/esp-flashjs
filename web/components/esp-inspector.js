@@ -94,6 +94,8 @@ export class EspInspector extends HTMLElement {
     this._cleanup = [];
     /** @type {import('./esp-hex-viewer.js').EspHexViewer|null} */
     this._hex = null;
+    /** @type {import('./esp-diff-view.js').EspDiffView|null} */
+    this._diff = null;
   }
 
   connectedCallback() {
@@ -195,23 +197,48 @@ export class EspInspector extends HTMLElement {
       tabsEl.append(button);
     }
 
+    // The diff is the one tab that still has something to say with nothing
+    // selected: two buffers can be compared on their own. Every other tab
+    // describes the selection and has nothing to describe.
+    if (state.inspector.tab === 'diff') {
+      this._hex = null;
+      this._renderDiff(bodyEl, target);
+      return;
+    }
+
     if (!target) {
       this._hex = null;
+      this._diff = null;
       bodyEl.innerHTML = `<p class="empty">${escapeHtml(t('inspector.empty'))}</p>`;
       return;
     }
 
-    if (state.inspector.tab === 'diff') {
-      // The diff compares buffers rather than describing the selection, so it
-      // is the one tab that does not depend on what is selected.
-      this._hex = null;
-      bodyEl.replaceChildren(document.createElement('esp-diff-view'));
-    } else if (state.inspector.tab === 'hex') {
+    if (state.inspector.tab === 'hex') {
+      this._diff = null;
       this._renderHex(bodyEl, target);
     } else {
       this._hex = null;
+      this._diff = null;
       this._renderAnalysis(bodyEl, target);
     }
+  }
+
+  /**
+   * @param {HTMLElement} body
+   * @param {ReturnType<EspInspector['_target']>} target
+   */
+  _renderDiff(body, target) {
+    // Reused across renders, like the hex viewer. Rebuilding it would reset
+    // the two dropdowns to their defaults on every unrelated store update —
+    // and since reading a partition is such an update, choosing what to
+    // compare and then reading the other half undid the choice.
+    if (!this._diff || this._diff.parentElement !== body) {
+      this._diff = /** @type {import('./esp-diff-view.js').EspDiffView} */ (
+        document.createElement('esp-diff-view')
+      );
+      body.replaceChildren(this._diff);
+    }
+    this._diff.show(target);
   }
 
   /**

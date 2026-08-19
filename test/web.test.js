@@ -16,6 +16,7 @@ import {
   isEditableType,
   parseValue,
 } from '../web/format-values.js';
+import { chooseDiffSides, SELECTION } from '../web/diff-sides.js';
 
 /* -------------------------------------------------------------------------- */
 /* Store                                                                       */
@@ -209,4 +210,61 @@ test('a download name survives a nested path', () => {
   assert.equal(downloadName('ffat', '/hello.txt'), 'ffat_hello.txt');
   assert.equal(downloadName('fs', '/'), 'fs_file', 'a path with no name still gets one');
   assert.ok(!downloadName('fs', '/a/b/c.bin').includes('/'));
+});
+
+/* -------------------------------------------------------------------------- */
+/* Diff sides                                                                  */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * @param {string} key
+ * @param {number} length
+ * @returns {import('../web/diff-sides.js').DiffOption}
+ */
+const option = (key, length) => ({ key, label: key, data: new Uint8Array(length) });
+
+const NOTHING = { left: null, right: null };
+
+test('the selection is the "after" side, so the diff follows what is selected', () => {
+  // The complaint that prompted this: changing the selection on the left had
+  // no effect here, because the view compared two buffers and never looked at
+  // the selection at all.
+  const options = [option(SELECTION, 100), option('backup', 100), option('other', 8)];
+  const sides = chooseDiffSides(options, { size: 100 }, NOTHING);
+
+  assert.equal(sides.right, SELECTION);
+  assert.equal(sides.left, 'backup', 'the same-sized copy, not merely the most recent');
+});
+
+test('with nothing selected, the two most recent buffers are compared', () => {
+  const options = [option('older', 64), option('newer', 64)];
+  const sides = chooseDiffSides(options, null, NOTHING);
+  assert.deepEqual(sides, { left: 'older', right: 'newer' });
+});
+
+test('a choice the user has made survives an unrelated change', () => {
+  const options = [option(SELECTION, 100), option('a', 100), option('b', 100)];
+  const sides = chooseDiffSides(options, { size: 100 }, { left: 'b', right: 'a' });
+  assert.deepEqual(sides, { left: 'b', right: 'a' });
+});
+
+test('a side pointing at a buffer that is gone falls back instead of blanking', () => {
+  // Buffers are replaced as regions are re-read, so this happens in normal use
+  // rather than only in error paths.
+  const options = [option('a', 32), option('b', 32)];
+  const sides = chooseDiffSides(options, null, { left: 'vanished', right: 'b' });
+  assert.equal(sides.right, 'b', 'the surviving choice is kept');
+  assert.equal(sides.left, 'a');
+});
+
+test('the two sides are never the same option', () => {
+  const options = [option(SELECTION, 16), option('only-other', 16)];
+  const sides = chooseDiffSides(options, { size: 16 }, NOTHING);
+  assert.notEqual(sides.left, sides.right);
+});
+
+test('one option alone cannot be compared with itself', () => {
+  const sides = chooseDiffSides([option(SELECTION, 16)], { size: 16 }, NOTHING);
+  assert.equal(sides.right, SELECTION);
+  assert.equal(sides.left, null, 'and the view says what is missing rather than showing a diff');
 });
