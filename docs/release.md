@@ -80,7 +80,7 @@ None of this can judge whether the entries are worth reading. That part is
 **Illustrative versions must not look like pins.** The rule is that every
 `esp-flashjs@<version>` in the repository names the current release, so an
 example writes `esp-flashjs@<broken>` instead, and a historical mention leaves
-the package name off — "0.1.0 was a test release", not `esp-flashjs@1.0.0`.
+the package name off — "0.1.0 was a test release", not `esp-flashjs@1.1.0`.
 
 No dates in the changelog. A tag carries one, npm carries one, and a third copy
 maintained by hand is a third copy to get wrong.

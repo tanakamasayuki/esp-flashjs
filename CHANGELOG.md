@@ -1,6 +1,8 @@
 # Changelog / 変更履歴
 
 ## Unreleased
+
+## 1.1.0
 - (EN) Documentation corrected against the shipped code. The spec still described a fixture policy the project reversed ("fixtures are generated in code"), an inspector with five tabs where there are two, a store shape from before the reconnect and staleness work, and a confidence scale that put a partition subtype at 0.3 when every shipped analyzer scores it 0.8–0.9. What happens to a region the partition table names but no parser reads — `coredump`, `phy`, and `nvs_keys`, which will never be read — was not written down anywhere; it is now [19](./docs/spec.md#19-handling-unsupported-regions).
 - (JA) ドキュメントを実装に合わせて修正。仕様書には、プロジェクトが既に覆した fixture 方針（「fixture はコードで生成する」）、実際は2つしかない inspector のタブが5つ、再接続とデータ鮮度の対応より前の store 構造、および subtype を 0.3 とする confidence 基準（同梱の analyzer はすべて 0.8〜0.9 を返す）が残っていた。パーティションテーブルが名前を教えているがパーサが無い領域の扱い（`coredump` / `phy`、および恒久的に読まない `nvs_keys`）はどこにも書かれていなかったため、[19](./docs/spec.ja.md#19-未対応領域の扱い) として明文化した。
 - (EN) The fixture provisioner now writes a core dump. `partitions.csv` gained a `coredump` partition — taken out of the unused second OTA slot, so every other partition kept its offset — and the sketch fills it by calling `abort()` once provisioning is done, then reports what ESP-IDF says about the dump on the boot after the panic. That is what made the parser below possible: the fixture comes off a device like every other one. `check-coredump.mjs` verifies it at the byte level and lists its strings, because it is the one fixture region holding RAM rather than constants this project chose. All three hardware-verified chips were re-provisioned from an erased state and re-captured, so every fixture now carries one.

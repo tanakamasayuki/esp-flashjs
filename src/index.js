@@ -47,4 +47,4 @@ export { EspFlash, FLASH_SECTOR_SIZE, READ_BLOCK_SIZE } from './device/esp-flash
 export { readDeviceInfo, readMac } from './device/device-info.js';
 
 /** Library version. Kept in step with package.json by scripts/build.js. */
-export const VERSION = '1.0.0';
+export const VERSION = '1.1.0';

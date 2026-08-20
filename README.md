@@ -21,7 +21,7 @@ library has no runtime dependencies and no build step: it is plain ESM that
 browsers and Node.js run as-is.
 
 ```js
-import { parsePartitionTable } from 'https://cdn.jsdelivr.net/npm/esp-flashjs@1.0.0/dist/esp-flashjs.core.min.js';
+import { parsePartitionTable } from 'https://cdn.jsdelivr.net/npm/esp-flashjs@1.1.0/dist/esp-flashjs.core.min.js';
 
 const table = parsePartitionTable(bytes);
 console.log(table.partitions);
@@ -81,7 +81,7 @@ Or from a CDN, with no install at all:
 
 ```html
 <script type="module">
-  import { analyzeBinary } from 'https://cdn.jsdelivr.net/npm/esp-flashjs@1.0.0/dist/esp-flashjs.min.js';
+  import { analyzeBinary } from 'https://cdn.jsdelivr.net/npm/esp-flashjs@1.1.0/dist/esp-flashjs.min.js';
 </script>
 ```
 
