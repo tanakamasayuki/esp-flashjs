@@ -48,8 +48,8 @@ Released on [npm](https://www.npmjs.com/package/esp-flashjs).
 
 The protocol stack, all the formats and the reference web app are implemented:
 chip detection, the flasher stub, read/write/erase/verify/dump, partition
-tables, firmware images, otadata, and NVS, SPIFFS, LittleFS and FAT — parsed,
-edited and rebuilt, from the API and from the web app alike.
+tables, firmware images, otadata, core dumps, and NVS, SPIFFS, LittleFS and
+FAT — parsed, edited and rebuilt, from the API and from the web app alike.
 
 Every one of them is tested against flash captured from an ESP32, an ESP32-S3
 and an ESP32-P4 rather than against images this project generated. See
@@ -97,7 +97,8 @@ import { analyzeBinary, parsePartitionTable } from 'esp-flashjs/core';
 
 const result = analyzeBinary(bytes);
 console.log(result.type);        // 'partition-table' | 'esp-image' | 'nvs' | 'spiffs' |
-                                 // 'littlefs' | 'fat' | 'otadata' | 'raw' | 'encrypted?'
+                                 // 'littlefs' | 'fat' | 'otadata' | 'coredump' |
+                                 // 'raw' | 'encrypted?'
 console.log(result.confidence);  // 0.0 – 1.0
 console.log(result.regions);     // byte ranges, for highlighting in a hex view
 console.log(result.issues);      // problems found, as stable codes
@@ -195,8 +196,8 @@ are the same thing.
 | ESP32-P4 | chip id | yes |
 
 "Tested" means a board of that chip was erased, provisioned with a known
-partition table, NVS contents and three filesystems, read back, and the result
-committed as a test fixture. The bootloader offset alone differs across those
+partition table, NVS contents, three filesystems and a core dump, read back,
+and the result committed as a test fixture. The bootloader offset alone differs across those
 three (0x1000, 0x0 and 0x2000), which is the kind of thing one board cannot
 tell you.
 

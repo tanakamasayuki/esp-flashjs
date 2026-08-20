@@ -38,7 +38,7 @@ console.log(table.partitions);
 
 [npm](https://www.npmjs.com/package/esp-flashjs) で公開しています。
 
-プロトコル層・各形式・リファレンス Web アプリまで実装済みです。チップ検出、flasher stub、read / write / erase / verify / dump、パーティションテーブル、ファームウェアイメージ、otadata、そして NVS・SPIFFS・LittleFS・FAT の解析・編集・再構築が、API からも Web アプリからも行えます。
+プロトコル層・各形式・リファレンス Web アプリまで実装済みです。チップ検出、flasher stub、read / write / erase / verify / dump、パーティションテーブル、ファームウェアイメージ、otadata、コアダンプ、そして NVS・SPIFFS・LittleFS・FAT の解析・編集・再構築が、API からも Web アプリからも行えます。
 
 いずれも**自前で生成したイメージではなく、ESP32 / ESP32-S3 / ESP32-P4 の実機から吸い出したフラッシュ**でテストしています。この区別がなぜ効いたかは [テスト fixture の作り方](./tools/fixture-device/README.ja.md) に書いてあります（**全部通っているテストスイートを9件の不具合が素通りしていました**）。残っている項目は[ロードマップ](./docs/spec.ja.md#23-ロードマップ)にあります。
 
@@ -79,7 +79,8 @@ import { analyzeBinary, parsePartitionTable } from 'esp-flashjs/core';
 
 const result = analyzeBinary(bytes);
 console.log(result.type);        // 'partition-table' | 'esp-image' | 'nvs' | 'spiffs' |
-                                 // 'littlefs' | 'fat' | 'otadata' | 'raw' | 'encrypted?'
+                                 // 'littlefs' | 'fat' | 'otadata' | 'coredump' |
+                                 // 'raw' | 'encrypted?'
 console.log(result.confidence);  // 0.0 〜 1.0
 console.log(result.regions);     // バイト範囲。Hex ビューのハイライトに使える
 console.log(result.issues);      // 見つかった問題。安定した code で返る
@@ -163,7 +164,7 @@ try {
 | ESP32-H2 | chip id | 未 |
 | ESP32-P4 | chip id | 済 |
 
-「済」は、そのチップの実機を消去し、既知のパーティションテーブル・NVS・3種のファイルシステムを書き込み、読み戻してテスト fixture としてコミットした、という意味です。この3機種だけでも bootloader の位置が 0x1000 / 0x0 / 0x2000 と違っており、1機種では気づけない類の差です。
+「済」は、そのチップの実機を消去し、既知のパーティションテーブル・NVS・3種のファイルシステム・コアダンプを書き込み、読み戻してテスト fixture としてコミットした、という意味です。この3機種だけでも bootloader の位置が 0x1000 / 0x0 / 0x2000 と違っており、1機種では気づけない類の差です。
 
 ESP8266 は対象外です。プロトコルは共通部分が多いものの、パーティションテーブルやイメージ形式が別物のためです。
 

@@ -45,6 +45,7 @@
     "nvs",
     "partition-table",
     "spiffs",
+    "coredump",
     "firmware"
   ],
   "repository": {
