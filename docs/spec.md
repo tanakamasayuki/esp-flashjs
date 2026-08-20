@@ -75,7 +75,7 @@ ESP32's flash structure visually from a browser.
 ### 2.2 Explicitly out of scope
 
 - Decrypting or circumventing Flash Encryption and Secure Boot. Encrypted
-  regions are only ever *labelled* as encrypted ([19](#19-encrypted-regions)).
+  regions are only ever *labelled* as encrypted ([20](#20-encrypted-regions)).
 - Building ESP-IDF projects.
 - **ESP8266 support.** The protocol overlaps substantially, but the format
   ecosystem is a different thing — there is no partition table, for one. A
@@ -791,7 +791,7 @@ validatePartitionTable(table, { flashSize })  // -> Issue[]
 - ota_x slots with no otadata partition (error)
 
 An Issue is `{ level: 'error'|'warning', code, params?, partitionIndex? }`. **It
-carries a `code`, not display text** ([16.8](#168-internationalization)). Parsing
+carries a `code`, not display text** ([17.8](#178-internationalization)). Parsing
 does not abort on an Issue; it returns as much as it can.
 
 Note that validation derives type and subtype names from the raw values rather
@@ -830,7 +830,7 @@ With a partition selected, the following are offered.
   error — **never truncate**. If it is smaller, ask the user before padding the
   remainder with `0xFF`.
 - Destructive operations always go through the confirmation flow in
-  [17. Safety](#17-safety).
+  [18. Safety](#18-safety).
 
 The canonical flow, using NVS as the example:
 
@@ -914,7 +914,7 @@ analyzeBinaryAs(id, data, ctx)  // -> AnalysisResult, format specified explicitl
 
 - If every confidence is below 0.3, the `raw` analyzer answers (hex view only).
 - Registered by default: `partition-table`, `esp-image`, `otadata`,
-  `spiffs`, `littlefs`, `fat`, `nvs`, `raw`.
+  `spiffs`, `littlefs`, `fat`, `nvs`, `coredump`, `raw`.
 - A detector that throws is simply not a match; it must never break the sweep.
   If detection succeeds but parsing then throws, the failure is reported against
   the raw view rather than surfacing as an exception.
@@ -927,10 +927,10 @@ the parse worked, and not a score for how much was read.
 
 | Value | Evidence | Where it happens |
 | --- | --- | --- |
-| 1.0 | A magic *and* a checksum or hash both verify | Partition table with a matching MD5; firmware image with a matching checksum |
+| 1.0 | A magic *and* a checksum or hash both verify | Partition table with a matching MD5; firmware image with a matching checksum; core dump with a matching CRC-32 |
 | 0.95 | A magic string unique to the format | LittleFS, whose superblock carries `littlefs` |
-| 0.8–0.9 | A magic-like structure, or a partition subtype backed by a layout that agrees with it | FAT (boot sector, 0.9); NVS (subtype, 0.9); SPIFFS (subtype, 0.85); partition table with no MD5 (0.8); otadata (subtype and exact size, 0.8) |
-| 0.5 | A magic matches but something contradicts it — or the structure fits with nothing to corroborate it | MD5 mismatch; checksum mismatch; SPIFFS pages in a partition the table does not call `spiffs` |
+| 0.8–0.9 | A magic-like structure, or a partition subtype backed by a layout that agrees with it | FAT (boot sector, 0.9); NVS (subtype, 0.9); core dump whose checksum is a SHA-256 this build cannot verify (0.9); SPIFFS (subtype, 0.85); partition table with no MD5 (0.8); otadata (subtype and exact size, 0.8) |
+| 0.5 | A magic matches but something contradicts it — or the structure fits with nothing to corroborate it | MD5 mismatch; checksum mismatch, including a core dump's; SPIFFS pages in a partition the table does not call `spiffs` |
 | 0.3–0.4 | Inference only | NVS entries with no subtype (0.4); a valid otadata CRC, or an image header with no segments (0.3) |
 | 0.0 | Not this format | |
 
@@ -1346,9 +1346,147 @@ hardware, and `tools/hardware-check.mjs --rebuild` is where it happens.
 
 ---
 
-## 13. Binary utilities
+## 13. Core dumps
 
-### 13.1 Diff
+### 13.1 Format
+
+A `coredump` partition holds what the panic handler wrote before the chip
+rebooted. ESP-IDF's own `esp_core_dump.h` documents the header; the rest was
+measured against dumps from three chips and cross-checked with `esp_coredump`,
+Espressif's reference decoder.
+
+```
+ 0  4  TOTAL_LEN    everything on flash, checksum included
+ 4  4  VERSION      (chip id << 16) | (major << 8) | minor
+ 8  4  TASKS_NUM    written as 0 in the ELF format
+12  4  TCB_SIZE     written as 0 in the ELF format
+16  4  MEM_SEG_NUM  written as 0 in the ELF format   (v2 and v2.1 only)
+20  4  CHIP_REV                                       (v2.1 only)
+ .  .  ET_CORE ELF image
+ .  .  zero padding
+end-4  4  CRC-32 over everything before it            (or a 32-byte SHA-256)
+```
+
+**The header is not a fixed 24 bytes.** Its length and the checksum algorithm
+both come from the version word, and getting either wrong shifts the ELF and
+invalidates the checksum — a working device would look like unreadable data.
+`COREDUMP_LAYOUTS` is the table:
+
+| Version | Header | Checksum | Notes |
+| --- | --- | --- | --- |
+| 0.1 / 0.2 / 0.3 | 16 / 20 / 24 | CRC-32 | Binary format, pre-IDF-4.1. Named, not decoded |
+| 1.0 | 20 | CRC-32 | |
+| 1.1 | 20 | SHA-256 | |
+| 1.2 | 24 | CRC-32 | What current ESP-IDF and Arduino write |
+| 1.3 | 24 | SHA-256 | |
+| 1.4 | 12 | SHA-256 | |
+
+The version's high half is the chip id, the same one firmware image headers
+carry, so a dump names the silicon that produced it. The low half is
+`major << 8 | minor`, where major 0 is the binary format and 1 is ELF.
+
+Inside the ELF, one `PT_LOAD` holds each task's TCB and another holds as much
+of its stack as was captured; `PT_NOTE` segments carry an `NT_PRSTATUS` per
+task plus three Espressif-specific notes:
+
+| Note | Type | Contents |
+| --- | --- | --- |
+| `ESP_CORE_DUMP_INFO` | 8266 | The version again, then the app ELF's SHA-256 prefix as a NUL-terminated string |
+| `ESP_EXTRA_INFO` | 677 | Crashed task's TCB, then `(register id, value)` pairs |
+| `ESP_PANIC_DETAILS` | 679 | The panic message, e.g. `abort() was called at PC 0x… on core 1` |
+
+### 13.2 Registers
+
+`elf_prstatus` puts the TCB address in `pr_pid` and the register set at offset
+72. The layout of that set is architecture-specific and neither is obvious:
+
+- **Xtensa** uses the GDB `xtensa_elf_gregset_t` order — `pc`, `ps`, `lbeg`,
+  `lend`, `lcount`, `sar`, `windowstart`, `windowbase`, 56 reserved words, then
+  `ar[0..63]`. ESP-IDF normalizes the register window before writing, so
+  `windowbase` is zero and `ar[0..15]` are the task's current `a0..a15`. The
+  stack pointer is therefore `ar[1]`, read directly rather than rotated into
+  place.
+- **RISC-V** is the plain 32-word gregset: `pc`, `ra`, `sp`, `gp`, `tp`, then
+  the temporaries, saved and argument registers.
+
+Only the current window's sixteen Xtensa registers are reported. The other 48
+are the rest of the physical file and mean nothing without unwinding the window
+chain.
+
+`ESP_EXTRA_INFO` is read by position for its first two pairs — EXCCAUSE then
+EXCVADDR — and by register id after that, which is what the reference decoder
+does. On RISC-V the note is the TCB and a terminator, so no exception registers
+are reported rather than invented ones.
+
+### 13.3 Task names
+
+`pcTaskName` has no fixed offset in a FreeRTOS TCB. What precedes it depends on
+`configMAX_TASK_NAME_LEN`, MPU wrappers and list-integrity checks, all build
+options. The 52 that three Arduino cores happen to agree on would read garbage
+out of any other build and present it as a task name.
+
+The dump constrains it instead. Every TCB in one dump has the same layout, so
+an offset is a candidate only if a NUL-terminated printable string starts there
+in *every* captured TCB — and across the three chips measured here exactly one
+offset survives that. Where none does, `taskNameOffset` is `null` and the tasks
+go unnamed, which is the honest outcome: one wrong name is worse than none.
+
+Tasks are paired with their stacks the same way, by evidence rather than by
+order. `pxTopOfStack` is the TCB's first field and points into the part of the
+stack that was captured, so the stack segment is the one containing it. Pairing
+on segment order instead would break the moment a build enables
+`CONFIG_ESP_COREDUMP_CAPTURE_DRAM` and plain memory regions appear between
+them.
+
+### 13.4 What is deliberately not done
+
+- **No backtrace, and no symbols.** Resolving an address to a function needs
+  the ELF of the exact build that crashed. Nothing in a dump carries it —
+  `esp_coredump` shells out to GDB with the application ELF for precisely this
+  reason. The `appElfSha256` note says *which* build, so the addresses can be
+  resolved elsewhere; the PC and SP of every task are where such an unwind
+  would start.
+- **SHA-256 dumps are reported as unverified**, never as valid and never as
+  broken. The only SHA-256 available here is `crypto.subtle`, which is async,
+  and an async parser would infect every caller for a build variant that is off
+  by default. `checksum.valid` is `null`, and confidence stops at 0.9.
+- **The pre-4.1 binary format is named, not decoded.** Nothing this project can
+  reach still writes one, and a body parsed blind would be indistinguishable
+  from a real task list.
+- **A corrupted dump is still shown.** Whoever is looking at one has a device
+  that already went wrong; refusing to list the tasks because a checksum moved
+  would take away the only record of what it was doing. The confidence drops to
+  0.5 and the mismatch is reported.
+
+### 13.5 Testing
+
+There is no builder to round-trip against, and a dump is RAM at the instant of
+a crash — two runs of one binary produced two 10884-byte dumps differing in 205
+of them. So tests assert meaning, never bytes.
+
+The oracle is better than usual, though. On the boot after the crash,
+`fixture_device` asks ESP-IDF what it thinks of the dump it just wrote and
+prints the answer; those numbers are recorded in
+[tools/fixture-device/README.md](../tools/fixture-device/README.md) and the
+parser is tested against them. They are the one account of these bytes that
+this project cannot have got wrong.
+
+Two self-checks in the fixtures are worth naming, because both would have
+caught a plausible-looking mistake:
+
+- Every task's stack pointer must land inside its own captured stack. The
+  pointer comes from the register set and the bounds from a program header, by
+  unrelated paths — a wrong gregset layout or a wrong pairing would not land on
+  each other.
+- Every `PT_LOAD` must belong to a task. An orphan segment means the pairing
+  dropped one, which is how a task would silently lose its stack while the dump
+  still looked complete.
+
+---
+
+## 14. Binary utilities
+
+### 14.1 Diff
 
 ```js
 diffBinary(a, b, { minGap = 16 })       // -> BinaryDiffChunk[]
@@ -1374,7 +1512,7 @@ diffBinaryStream(a, b, opts)            // -> AsyncGenerator<BinaryDiffChunk>
 Comparing two 16 MB images synchronously on the UI thread freezes the page, so
 `diffBinaryStream()` yields control every 1 MB. The UI always uses that form.
 
-### 13.2 Search
+### 14.2 Search
 
 ```js
 searchBytes(data, pattern, { from = 0, limit = 1000 })                   // -> number[]
@@ -1384,7 +1522,7 @@ parseHexPattern("AA 50 ?? 02")  // -> {bytes: Uint8Array, mask: Uint8Array}
 
 `??` acts as a wildcard.
 
-### 13.3 Hashes
+### 14.3 Hashes
 
 `crc32(data)` and `md5(data)` are implemented here, because `crypto.subtle` has
 no MD5 and it is needed to compare against `SPI_FLASH_MD5`. SHA-256 goes through
@@ -1393,7 +1531,7 @@ back — a caller that cannot verify a hash must know that.
 
 ---
 
-## 14. Error model
+## 15. Error model
 
 ```text
 EspFlashError (base)
@@ -1421,7 +1559,7 @@ EspFlashError (base)
 Every error carries a `code` (a stable string such as `'SYNC_FAILED'`) and a
 `details` object. **The UI branches on `code`, never on the message text, and
 translates the code into display text**
-([16.8](#168-internationalization)). `message` is an English developer-facing
+([17.8](#178-internationalization)). `message` is an English developer-facing
 string.
 
 **Policy:** analysis code (`format/`) prefers accumulating `issues` and
@@ -1430,7 +1568,7 @@ target format at all, or when `strict: true`. Device operations throw.
 
 ---
 
-## 15. Progress and cancellation
+## 16. Progress and cancellation
 
 Long-running operations (read, write, dump, diff) share a signature:
 
@@ -1452,9 +1590,9 @@ which unthrottled is enough DOM work to visibly slow the transfer it reports on.
 
 ---
 
-## 16. The web application
+## 17. The web application
 
-### 16.1 Principles
+### 17.1 Principles
 
 - **No framework, no build.** `web/index.html` loads `./app.js` as
   `type="module"`.
@@ -1466,7 +1604,7 @@ which unthrottled is enough DOM work to visibly slow the transfer it reports on.
 - References to the core are funnelled through `web/esp-flashjs.js`
   ([4.4](#44-module-resolution-and-paths)).
 
-### 16.2 The store
+### 17.2 The store
 
 ```js
 // web/store.js
@@ -1506,7 +1644,7 @@ old buffer instead of accumulating a second one beside it.
 comparison** — nothing is deep-copied. Buffers reach 16 MB, so copying happens
 only as an explicit operation.
 
-### 16.3 Screen layout
+### 17.3 Screen layout
 
 ```text
 ┌───────────────────────────────────────────────────┐
@@ -1539,7 +1677,7 @@ only as an explicit operation.
   stay. Partitions left on screen from the previous board read as the current
   board's after a reconnect, and nothing on screen distinguishes them.
 
-### 16.4 Inspector tabs
+### 17.4 Inspector tabs
 
 | Tab | Contents |
 | --- | --- |
@@ -1556,7 +1694,7 @@ A byte-comparison tab existed and was removed. It took two subjects where every
 other tab took one, so nothing on screen explained why it was there or what it
 was comparing. `diffBinary` remains in the API.
 
-### 16.5 Hex viewer (`esp-hex-viewer`)
+### 17.5 Hex viewer (`esp-hex-viewer`)
 
 - **Virtual scrolling is mandatory** — 16 MB is 1,048,576 rows. Only the
   viewport plus a small overscan exists in the DOM.
@@ -1570,7 +1708,7 @@ was comparing. `diffBinary` remains in the API.
 - Values arrive as **properties, not attributes**: `.data` (Uint8Array),
   `.baseAddress`, `.regions`.
 
-### 16.6 UI terminology
+### 17.6 UI terminology
 
 "Upload" and "Download" are **forbidden** — the direction is ambiguous.
 
@@ -1590,7 +1728,7 @@ translating, the `locales/` keys themselves encode it, as in
 Destructive buttons use a danger colour and sit in a group visually separated
 from the non-destructive ones (Read / Analyze / Export).
 
-### 16.7 Log
+### 17.7 Log
 
 Every device operation and analysis run is logged.
 
@@ -1604,7 +1742,7 @@ with chip details and the library version in the header so it can be attached to
 a bug report. **The exported log is in English**, so whoever receives it can
 read it.
 
-### 16.8 Internationalization
+### 17.8 Internationalization
 
 **Requirement:** detect from the browser's language settings, falling back to
 English. Ship Japanese, English and Chinese from the start, structured so other
@@ -1675,11 +1813,11 @@ is documented so community PRs can add them.
 
 ---
 
-## 17. Safety
+## 18. Safety
 
 Writing flash can leave a device unable to boot, so the following are mandatory.
 
-### 17.1 Defining dangerous regions
+### 18.1 Defining dangerous regions
 
 A write or erase touching any of these counts as a dangerous operation:
 
@@ -1691,7 +1829,7 @@ A write or erase touching any of these counts as a dangerous operation:
 - Any partition with the `encrypted` flag
 - The efuse and nvs_keys partitions
 
-### 17.2 Confirmation flow
+### 18.2 Confirmation flow
 
 A dangerous operation shows a confirmation dialog first, containing:
 
@@ -1705,7 +1843,7 @@ A dangerous operation shows a confirmation dialog first, containing:
 
 Writing plaintext to an encrypted partition adds a second warning on top.
 
-### 17.3 Backup first
+### 18.3 Backup first
 
 The UI steers the user through:
 
@@ -1720,14 +1858,14 @@ Read Original → Store Backup → Modify → Preview Diff → Write → Verify
   a way back; continuing without one silently removes it.
 - Preview Diff compares the region's current contents against the new data.
 
-### 17.4 Verify
+### 18.4 Verify
 
 Verification runs by default after a write (MD5 comparison). A mismatch is
 reported as a clear error in both the log and a dialog.
 
 ---
 
-## 18. Handling unsupported regions
+## 19. Handling unsupported regions
 
 "Cannot be parsed" is not one state but three, and the partition table is
 usually what separates them:
@@ -1752,16 +1890,15 @@ whether anyone intends to read it is not.
 
 A subtype hint is only trusted for a region that holds something. A blank
 partition is reported as erased, not as an unimplemented format — otherwise a
-`coredump` partition on a board that has never panicked would carry a warning
-about missing support for data that is not there.
+`phy` partition on a board that has never initialised its radio would carry a
+warning about missing support for data that is not there.
 
 The data subtypes in that middle state today:
 
 | Subtype | Format | Status |
 | --- | --- | --- |
-| `coredump` (0x03) | ESP-IDF core dump | Not implemented, but a hardware fixture now exists: `fixture_device` writes one by crashing on purpose, and `coredump.bin` is captured alongside every other region ([23](#23-open-questions)) |
 | `phy` (0x01) | PHY init data | Not implemented, and not scheduled |
-| `nvs_keys` (0x04) | NVS encryption keys | **Will not be implemented.** Without the eFuse key the contents are ciphertext, so there is nothing readable to show even in principle ([19](#19-encrypted-regions)) |
+| `nvs_keys` (0x04) | NVS encryption keys | **Will not be implemented.** Without the eFuse key the contents are ciphertext, so there is nothing readable to show even in principle ([20](#20-encrypted-regions)) |
 
 Whichever of the three a region is in:
 
@@ -1773,7 +1910,7 @@ Whichever of the three a region is in:
 
 ---
 
-## 19. Encrypted regions
+## 20. Encrypted regions
 
 - Where Flash Encryption or similar makes the contents unreadable, they are
   never presented as though they had been parsed.
@@ -1787,15 +1924,15 @@ Whichever of the three a region is in:
 
 ---
 
-## 20. Testing
+## 21. Testing
 
-### 20.1 Approach
+### 21.1 Approach
 
 Fixture-based, with no dependency on hardware. The runner is Node's built-in
 `node:test` — no added dependency, and `node --test` runs it. Browser-specific
 behaviour is covered by manual testing.
 
-### 20.2 Fixtures
+### 21.2 Fixtures
 
 Fixtures come from two places, and they are not equal.
 
@@ -1831,7 +1968,7 @@ Binaries captured from real hardware go under `test/fixtures/` only, and
 committed.** The provisioning sketch writes fixed constants and nothing else,
 and the MAC address lives in eFuse, outside every captured region.
 
-### 20.3 Required test cases
+### 21.3 Required test cases
 
 | Subject | Cases |
 | --- | --- |
@@ -1854,7 +1991,7 @@ reading of a format round-trip perfectly whether or not that reading was right,
 so every format that can be written back carries a second check that does not
 go through the parser ([12.2](#122-rebuilding)).
 
-### 20.4 CI
+### 21.4 CI
 
 GitHub Actions runs the following. Locally, `npm run check` runs the same four.
 
@@ -1873,7 +2010,7 @@ to write tests, and the manual hardware checklist, are in
 
 ---
 
-## 21. Distribution
+## 22. Distribution
 
 See [publishing.md](./publishing.md) for the full account. In brief:
 
@@ -1885,7 +2022,7 @@ See [publishing.md](./publishing.md) for the full account. In brief:
 
 ---
 
-## 22. Roadmap
+## 23. Roadmap
 
 ### Phase 1 — MVP (implemented)
 
@@ -1934,22 +2071,25 @@ See [publishing.md](./publishing.md) for the full account. In brief:
 - [x] Publishing and documenting the analyzer plugin API ([analyzers.md](./analyzers.md); its example is executed by `test/analyzer-plugin.test.js`, so it cannot drift)
 - [x] NodeSerialTransport / WebUSBTransport — decided against shipping either; the `Transport` interface is the extension point and [transports.md](./transports.md) documents it with a working Node example. A Node transport would mean a native dependency, which costs every consumer the zero-dependency guarantee
 - [x] Deciding on package splitting (`@esp-flashjs/*`) — decided against
+- [x] Core dump parsing ([13](#13-core-dumps)) — added once the fixture existed:
+      panic reason, crashed task, per-task registers and stacks, verified
+      against what ESP-IDF said about the same bytes
 - [ ] Reconsidering ESP8266 support
-- [ ] Parsing the remaining data subtypes (`coredump`, `phy`) — not started and
-      not scheduled. [18](#18-handling-unsupported-regions) describes how they
-      are reported meanwhile, and `nvs_keys` is there for good
+- [ ] Parsing the remaining data subtype (`phy`) — not started and
+      not scheduled. [19](#19-handling-unsupported-regions) describes how it
+      is reported meanwhile, and `nvs_keys` is there for good
 
 ---
 
-## 23. Open questions
+## 24. Open questions
 
 | # | Question | Notes |
 | --- | --- | --- |
 | 1 | **Hardware verification** | Resolved for ESP32, ESP32-S3 and ESP32-P4: each was erased, provisioned and captured, and those captures are the fixtures the parsers are tested against. It settled reset timing, READ_FLASH flow control and five parser bugs that MockTransport could not have caught. The other chips remain unverified and the README says so |
-| 2 | ~~Whether and when to split packages~~ | **No.** The `esp-flashjs/core` subpath already gives an analysis-only consumer the smaller bundle — 80 KB against 108 KB minified — without a second package to version, publish and keep in step. Splitting would buy nothing a subpath export and `sideEffects: false` do not already buy, and would cost every release a coordination step. The directory boundaries, enforced by `lint:layers`, are what actually keeps the layering honest |
+| 2 | ~~Whether and when to split packages~~ | **No.** The `esp-flashjs/core` subpath already gives an analysis-only consumer the smaller bundle — 91 KB against 120 KB minified — without a second package to version, publish and keep in step. Splitting would buy nothing a subpath export and `sideEffects: false` do not already buy, and would cost every release a coordination step. The directory boundaries, enforced by `lint:layers`, are what actually keeps the layering honest |
 | 3 | ~~How to implement LittleFS~~ | **Written from scratch**, in `src/format/fs/littlefs.js`. Porting would have meant carrying a C codebase's structure into JavaScript for a reader that needs one direction of it; the two details that actually cost time — tags chained against the *decoded* previous tag, and the forward-CRC tag — were not going to be any clearer through a port |
 | 4 | Additional languages | ko / de / fr / es / pt-BR / ru. Each is one JSON file |
-| 5 | **Parsing core dumps** | Undecided, but the objection that used to block it is gone: `fixture_device` provisions a `coredump` partition and fills it by crashing on purpose, so the fixture comes off a device like every other one. What is in it, measured rather than assumed: a 24-byte header exactly as ESP-IDF's own `esp_core_dump.h` documents it, an `ET_CORE` ELF at offset 24 — Xtensa on the ESP32 and ESP32-S3, RISC-V on the ESP32-P4 — and a CRC-32 over everything before it that verifies. Magic **and** a checksum makes it one of the few formats here that could honestly reach 1.0 ([9.3](#93-confidence-scale)). Two caveats. The dump is **not reproducible**: two runs of one binary gave 10884 bytes each, differing in 205 of them, so a test may assert meaning and the checksum but never bytes. And it is the only fixture region holding RAM rather than constants chosen here, so `check-coredump.mjs` reads it for secrets on every capture |
+| 5 | ~~Parsing core dumps~~ | **Done**, in `src/format/coredump.js` ([13](#13-core-dumps)). What unblocked it was the fixture: `fixture_device` provisions a `coredump` partition and fills it by crashing on purpose, so the dump comes off a device like every other region. Magic **and** a verifying CRC-32 make it one of the three formats here that reach 1.0 ([9.3](#93-confidence-scale)). Two things the work turned up that were not visible from the header documentation: the header is **not** a fixed 24 bytes — four lengths are in circulation and only the version word says which — and the task name has no fixed offset in a TCB, so it is derived from the offset every captured TCB agrees on rather than hard-coded. Backtraces stay out of scope: they need the ELF of the crashing build, which no dump carries |
 
 **Settled:**
 

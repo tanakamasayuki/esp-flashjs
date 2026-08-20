@@ -40,6 +40,7 @@ test('the API reference names nothing that was removed', () => {
     'URL', 'DTR', 'RTS', 'NVS', 'FAT',
     // Type names, which are JSDoc typedefs rather than runtime exports.
     'Transport', 'ChipDef', 'NvsStore', 'NvsChange', 'FsImage', 'Issue',
+    'CoreDump', 'CoreDumpTask',
   ]);
   const codes = new Set(
     Object.values(errors)

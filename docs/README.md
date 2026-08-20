@@ -53,5 +53,5 @@ More of this codebase follows from these two than from anything else.
    stub being uploaded first ([spec §6.4](./spec.md#64-the-flasher-stub)).
 2. **The library holds no user-facing prose.** It returns stable `code` values
    and parameters; translation belongs to `web/locales/`
-   ([spec §16.8](./spec.md#168-internationalization)). That separation is what
+   ([spec §17.8](./spec.md#178-internationalization)). That separation is what
    lets a third-party app embed the library and keep its own wording.

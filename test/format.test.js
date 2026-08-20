@@ -431,15 +431,15 @@ test('otadata tells "never written" apart from "corrupt"', () => {
 });
 
 test('an unparsed partition is named from its subtype, not left as "raw"', () => {
-  // Core dumps are still unparsed. The analyzer must say so rather than shrug,
-  // because the partition table already told us what the region is.
+  // PHY init data is still unparsed. The analyzer must say so rather than
+  // shrug, because the partition table already told us what the region is.
   const data = new Uint8Array(0x5000).fill(0xff);
   for (let i = 0; i < 0x1000; i += 32) data[i] = 0x01;
 
-  const coredump = part('coredump', PARTITION_TYPE.DATA, 0x03, 0x9000, 0x5000);
-  const result = analyzeBinary(data, { partition: coredump });
+  const phy = part('phy_init', PARTITION_TYPE.DATA, 0x01, 0x9000, 0x5000);
+  const result = analyzeBinary(data, { partition: phy });
 
-  assert.equal(result.metadata.expectedFormat, 'coredump');
+  assert.equal(result.metadata.expectedFormat, 'phy-init');
   assert.equal(result.metadata.expectedStatus, 'unplanned');
   assert.equal(result.metadata.contents, 'data');
   assert.ok(result.issues.some((i) => i.code === 'analyze.notImplemented'));

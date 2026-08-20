@@ -151,6 +151,31 @@ Constants: `ESP_IMAGE_MAGIC`, `IMAGE_CHIP_IDS`.
 `parseOtaData(data)` → active sector, boot slot, sequence numbers, issues.
 Constant: `OTADATA_SECTOR_SIZE`.
 
+### Core dumps
+
+| Name | Purpose |
+| --- | --- |
+| `parseCoreDump(data)` | → `CoreDump` |
+| `isCoreDump(data)` | Cheap header check, for detection |
+| `findTaskNameOffset(data, tcbSegments)` | Where `pcTaskName` sits in this build's TCB, or `null` |
+
+`CoreDump` members: `totalLength`, `version`, `major`, `minor`, `dataFormat`,
+`versionLabel`, `chipId`, `chipName`, `chipRevision`, `headerSize`, `checksum`,
+`architecture`, `machine`, `tasks`, `crashedTask`, `panicReason`,
+`appElfSha256`, `exceptionRegisters`, `segments`, `notes`, `taskNameOffset`,
+`issues`.
+
+Each `CoreDumpTask` carries `tcbAddress`, `name`, `pc`, `stackPointer`,
+`crashed`, `stack` and the named `registers`. `checksum.valid` is `true`,
+`false`, or `null` for a SHA-256 dump — that variant cannot be verified
+synchronously, and `null` says so rather than claiming either answer.
+
+Addresses are reported as recorded. Resolving them to symbols, or unwinding a
+call stack, needs the ELF of the crashing build, which no core dump contains.
+
+Constants: `COREDUMP_FORMAT`, `COREDUMP_LAYOUTS`, `COREDUMP_MACHINE`,
+`COREDUMP_NOTE`.
+
 ### NVS
 
 | Name | Purpose |
@@ -252,7 +277,8 @@ what high entropy means.
 
 Built-in analyzers, exported so they can be inspected or replaced:
 `partitionTableAnalyzer`, `espImageAnalyzer`, `otaDataAnalyzer`, `nvsAnalyzer`,
-`spiffsAnalyzer`, `littlefsAnalyzer`, `fatAnalyzer`, `rawAnalyzer`.
+`spiffsAnalyzer`, `littlefsAnalyzer`, `fatAnalyzer`, `coreDumpAnalyzer`,
+`rawAnalyzer`.
 Constants: `CONFIDENCE_THRESHOLD`, `HIGH_ENTROPY_THRESHOLD`.
 
 ---

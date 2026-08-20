@@ -17,6 +17,7 @@ import { parseNvs } from './nvs/parse.js';
 import { parseSpiffs } from './fs/spiffs.js';
 import { parseLittlefs, LITTLEFS_MAGIC } from './fs/littlefs.js';
 import { parseFat, parseBpb } from './fs/fat.js';
+import { parseCoreDump, isCoreDump } from './coredump.js';
 import { entropy, isUniform } from '../binary/diff.js';
 
 /**
@@ -349,6 +350,140 @@ export const otaDataAnalyzer = {
 };
 
 /**
+ * How much of a core dump could only be true if it really is one.
+ *
+ * Shared by `detect` and `analyze` rather than written twice: the two used to
+ * compute it separately, and `analyzeBinaryAs('coredump', …)` — which skips
+ * detection — reported 0.5 for a dump whose header was never understood, as
+ * though a checksum had been checked and failed.
+ *
+ * @param {import('./coredump.js').CoreDump} dump
+ * @returns {number}
+ */
+function coreDumpConfidence(dump) {
+  // No checksum means the version word named a header layout this library does
+  // not have, so nothing after the first eight bytes was read at all.
+  if (dump.checksum === null) return 0;
+  if (dump.checksum.valid === true) return 1.0;
+  // Magic, structure, and a checksum that is present but unverifiable here.
+  if (dump.checksum.valid === null) return 0.9;
+  return 0.5;
+}
+
+/**
+ * ESP-IDF core dumps.
+ *
+ * One of only two formats here that can honestly reach 1.0: the header
+ * identifies itself and a CRC-32 over the whole dump verifies, so a match is
+ * not an inference about layout the way NVS or SPIFFS is.
+ *
+ * The partition subtype is deliberately *not* consulted. A dump read straight
+ * out of a flash image, or handed over as a file with no table beside it, is
+ * the same bytes and deserves the same answer.
+ *
+ * @type {BinaryAnalyzer}
+ */
+export const coreDumpAnalyzer = {
+  id: 'coredump',
+  name: 'Core Dump',
+  detect(data) {
+    if (!isCoreDump(data)) return { confidence: 0 };
+    try {
+      const dump = parseCoreDump(data);
+      return {
+        confidence: coreDumpConfidence(dump),
+        reasonCode:
+          dump.checksum === null ? 'headerNotUnderstood'
+          : dump.checksum.valid === true ? 'magicAndChecksum'
+          : dump.checksum.valid === null ? 'checksumNotVerified'
+          : 'checksumMismatch',
+      };
+    } catch {
+      return { confidence: 0 };
+    }
+  },
+  analyze(data) {
+    const dump = parseCoreDump(data);
+
+    /** @type {BinaryRegion[]} */
+    const regions = [
+      { offset: 0, length: dump.headerSize, label: 'Core dump header', kind: 'header' },
+    ];
+    if (dump.dataFormat === 'elf') {
+      regions.push({ offset: dump.headerSize, length: 52, label: 'ELF header', kind: 'header' });
+    }
+    for (const segment of dump.segments) {
+      const task = segment.taskIndex === null ? null : dump.tasks[segment.taskIndex];
+      const who = task?.name ?? (task ? `0x${task.tcbAddress.toString(16)}` : '');
+      regions.push({
+        offset: segment.offset,
+        length: segment.length,
+        label:
+          segment.role === 'notes' ? 'ELF notes'
+          : segment.role === 'tcb' ? `TCB ${who}`
+          : segment.role === 'stack' ? `Stack ${who}`
+          : `Memory @ 0x${segment.address.toString(16)}`,
+        kind: segment.role === 'notes' ? 'header' : 'data',
+        ...(segment.role === 'notes'
+          ? {
+              children: dump.notes
+                .filter((note) => note.segment === segment.index)
+                .map((note) => ({
+                  offset: note.offset,
+                  length: note.length,
+                  label: note.name === 'CORE' ? 'CORE (task registers)' : note.name,
+                  kind: /** @type {const} */ ('entry'),
+                })),
+            }
+          : {}),
+      });
+    }
+    if (dump.checksum) {
+      const end = dump.checksum.offset;
+      const lastSegment = dump.segments.reduce((at, s) => Math.max(at, s.offset + s.length), dump.headerSize);
+      if (end > lastSegment) {
+        regions.push({ offset: lastSegment, length: end - lastSegment, label: 'Padding', kind: 'padding' });
+      }
+      regions.push({
+        offset: end,
+        length: dump.totalLength - end,
+        label: dump.checksum.algorithm === 'crc32' ? 'CRC-32' : 'SHA-256',
+        kind: 'header',
+      });
+    }
+    if (dump.totalLength < data.length) {
+      regions.push({
+        offset: dump.totalLength,
+        length: data.length - dump.totalLength,
+        label: 'Unused',
+        kind: 'padding',
+      });
+    }
+
+    return {
+      type: 'coredump',
+      confidence: coreDumpConfidence(dump),
+      metadata: {
+        chip: dump.chipName,
+        chipRevision: dump.chipRevision,
+        architecture: dump.architecture,
+        version: dump.versionLabel,
+        length: dump.totalLength,
+        tasks: dump.tasks.length,
+        crashedTask: dump.crashedTask?.name ?? null,
+        panicReason: dump.panicReason,
+        checksum: dump.checksum?.algorithm ?? null,
+        checksumValid: dump.checksum?.valid ?? null,
+        appElfSha256: dump.appElfSha256,
+      },
+      regions,
+      issues: dump.issues,
+      model: dump,
+    };
+  },
+};
+
+/**
  * Formats we can name from a partition subtype but do not parse.
  *
  * Knowing "this is a core dump, we just do not read core dumps" is a different
@@ -369,7 +504,6 @@ export const otaDataAnalyzer = {
  */
 export const UNIMPLEMENTED_SUBTYPE_FORMATS = {
   nvs_keys: { format: 'nvs-keys', status: 'never' },
-  coredump: { format: 'coredump', status: 'unplanned' },
   phy: { format: 'phy-init', status: 'unplanned' },
 };
 
@@ -717,4 +851,5 @@ registerAnalyzer(nvsAnalyzer);
 registerAnalyzer(littlefsAnalyzer);
 registerAnalyzer(fatAnalyzer);
 registerAnalyzer(spiffsAnalyzer);
+registerAnalyzer(coreDumpAnalyzer);
 registerAnalyzer(rawAnalyzer);

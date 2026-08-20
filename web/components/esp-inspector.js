@@ -440,6 +440,8 @@ export class EspInspector extends HTMLElement {
         analysis.type === 'fat'
       ) {
         container.append(this._fsTree(analysis, target));
+      } else if (analysis.type === 'coredump') {
+        container.append(coredumpDetails(analysis));
       } else if (analysis.type === 'raw' || analysis.type === 'encrypted?') {
         container.append(rawSummary(analysis));
       } else {
@@ -725,6 +727,116 @@ function imageDetails(analysis, partition) {
     rows.push([t('image.freeSpace'), `${formatByteSize(free)} (${percent}%)`]);
   }
   return definitionList(rows);
+}
+
+/**
+ * A core dump, from the top down: what crashed, then who else was running.
+ *
+ * The panic reason and the crashed task come first because that is the whole
+ * question someone opening a core dump is asking. The task table below it is
+ * context — what the rest of the system was doing at the same instant.
+ *
+ * Addresses are shown raw. Turning them into function names needs the ELF of
+ * the exact build that crashed, which is not in the dump and is not something
+ * a browser page can be handed; saying so is better than a column of numbers
+ * with no explanation of why they are numbers.
+ *
+ * @param {import('../esp-flashjs.js').AnalysisResult} analysis
+ * @returns {HTMLElement}
+ */
+function coredumpDetails(analysis) {
+  const dump = /** @type {import('../esp-flashjs.js').CoreDump} */ (analysis.model);
+  const wrap = document.createElement('div');
+
+  /** @type {Array<[string, string]>} */
+  const rows = [];
+  if (dump.panicReason) rows.push([t('coredump.panicReason'), dump.panicReason]);
+  if (dump.crashedTask) rows.push([t('coredump.crashedTask'), dump.crashedTask.name ?? toHexAddress(dump.crashedTask.tcbAddress)]);
+  rows.push(
+    [t('device.chip'), dump.chipRevision === null ? dump.chipName : `${dump.chipName} ${revisionLabel(dump.chipRevision)}`],
+    [t('coredump.architecture'), dump.architecture],
+    [t('coredump.version'), dump.versionLabel],
+    [t('coredump.tasks'), String(dump.tasks.length)],
+  );
+  if (dump.checksum) {
+    rows.push([
+      t('image.checksum'),
+      `${dump.checksum.algorithm.toUpperCase()} — ${
+        dump.checksum.valid === null
+          ? t('coredump.notVerified')
+          : t(dump.checksum.valid ? 'image.valid' : 'image.invalid')
+      }`,
+    ]);
+  }
+  if (dump.appElfSha256) rows.push([t('coredump.appHash'), dump.appElfSha256]);
+  wrap.append(definitionList(rows));
+
+  if (dump.tasks.length > 0) {
+    wrap.append(heading2(t('coredump.tasks')), taskTable(dump));
+  }
+  if (dump.exceptionRegisters.length > 0) {
+    wrap.append(
+      heading2(t('coredump.registers')),
+      definitionList(dump.exceptionRegisters.map((r) => /** @type {[string, string]} */ ([r.name, toHexAddress(r.value)]))),
+    );
+  }
+
+  const note = document.createElement('p');
+  note.className = 'note';
+  note.textContent = t('coredump.noSymbols');
+  wrap.append(note);
+  return wrap;
+}
+
+/**
+ * @param {import('../esp-flashjs.js').CoreDump} dump
+ * @returns {HTMLElement}
+ */
+function taskTable(dump) {
+  const table = document.createElement('table');
+  const head = document.createElement('tr');
+  for (const label of [
+    t('coredump.task'),
+    t('coredump.pc'),
+    t('coredump.stackPointer'),
+    t('coredump.stack'),
+  ]) {
+    const th = document.createElement('th');
+    th.textContent = label;
+    head.append(th);
+  }
+  table.append(head);
+
+  for (const task of dump.tasks) {
+    const tr = document.createElement('tr');
+    for (const [text, mono] of /** @type {Array<[string, boolean]>} */ ([
+      [task.name ?? toHexAddress(task.tcbAddress), false],
+      [toHexAddress(task.pc), true],
+      [task.stackPointer === null ? '—' : toHexAddress(task.stackPointer), true],
+      [task.stack ? `${toHexAddress(task.stack.address)} · ${formatByteSize(task.stack.length)}` : '—', true],
+    ])) {
+      const td = document.createElement('td');
+      if (mono) td.className = 'num';
+      td.textContent = text;
+      tr.append(td);
+    }
+    if (task.crashed) {
+      tr.style.fontWeight = '600';
+      tr.title = t('coredump.crashed');
+    }
+    table.append(tr);
+  }
+  return table;
+}
+
+/**
+ * The eFuse reports a silicon revision as `major * 100 + minor`.
+ *
+ * @param {number} revision
+ * @returns {string}
+ */
+function revisionLabel(revision) {
+  return `v${Math.floor(revision / 100)}.${revision % 100}`;
 }
 
 /**

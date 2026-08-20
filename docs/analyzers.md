@@ -4,7 +4,7 @@
 
 An analyzer teaches ESP FlashJS to recognise and describe a binary format. The
 library ships analyzers for partition tables, firmware images, OTA data, NVS,
-SPIFFS, LittleFS and FAT; anything else — a vendor's provisioning blob, a
+SPIFFS, LittleFS, FAT and core dumps; anything else — a vendor's provisioning blob, a
 config region, a proprietary log — is a plugin you can register at runtime.
 
 This page is about writing one. The type definitions are in
@@ -163,6 +163,12 @@ treating it as a bare guess: the table is a strong statement about what the
 region is meant to hold. It is still not proof about the bytes, which is why
 nothing identified by subtype alone reaches 1.0 — `nvs` stops at 0.9 because
 the NVS format contains nothing that names itself.
+
+The three that do reach 1.0 — partition tables, firmware images and core dumps
+— all get there the same way, by carrying something that verifies. `coredump`
+goes further and ignores the subtype entirely: a dump lifted out of a flash
+image, or handed over as a bare file, is the same bytes and deserves the same
+answer.
 
 ### Report problems, do not throw them
 

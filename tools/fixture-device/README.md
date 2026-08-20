@@ -89,8 +89,10 @@ boot prints is worth keeping:
 ```
 
 Those numbers come from ESP-IDF reading back its own bytes, which makes them
-the one account of this fixture that this project cannot have got wrong. A core
-dump parser written later has to agree with them.
+the one account of this fixture that this project cannot have got wrong. The
+core dump parser that was written later has to agree with them, and
+`test/coredump.test.js` asserts every one of these five values against the
+bytes.
 
 A reset for any other reason starts the cycle over — provision, crash, report —
 and ends in the same state. `capture.sh` avoids triggering that by leaving the

@@ -56,7 +56,7 @@ and an ESP32-P4 rather than against images this project generated. See
 [test fixtures](./tools/fixture-device/README.md) for why that distinction
 turned out to matter — nine faults survived a complete, passing test suite
 until real captures replaced the generated ones — and
-[the roadmap](./docs/spec.md#22-roadmap) for what is left.
+[the roadmap](./docs/spec.md#23-roadmap) for what is left.
 
 **0.1.0 was a test release** published before any hardware was available, and
 could not complete a session against a device. Do not use it.

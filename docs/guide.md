@@ -97,7 +97,7 @@ const nvsPartition = findPartitionByLabel(table.partitions, 'nvs');
 const result = analyzeBinary(nvsBytes, {
   partition: nvsPartition,
   offset: nvsPartition.offset,
-  flashEncryptionEnabled: false,   // if you know; see §10 of spec.md
+  flashEncryptionEnabled: false,   // if you know; see §9.4 of spec.md
 });
 ```
 

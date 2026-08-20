@@ -33,6 +33,7 @@ const REGIONS = [
   { file: 'partition-table.bin', subtype: null, type: 'partition-table' },
   { file: 'otadata.bin', subtype: 'ota', type: 'otadata' },
   { file: 'bootarea.bin', subtype: null, type: 'esp-image' },
+  { file: 'coredump.bin', subtype: 'coredump', type: 'coredump' },
 ];
 
 /** @param {string} chip @param {string} file */
@@ -112,28 +113,18 @@ test('NVS is analysed rather than reported as unimplemented', (t) => {
   assert.ok(!result.issues.some((i) => i.code === 'analyze.notImplemented'));
 });
 
-test('a real core dump is named from its subtype, not guessed at', (t) => {
+test('a core dump is recognised from its bytes, with no partition table to help', (t) => {
   const data = region('esp32s3', 'coredump.bin');
   if (!data) return t.skip('no captured fixture');
 
-  // There is no core dump analyzer, and this pins what happens in the meantime
-  // against bytes a device actually wrote rather than a buffer made up here.
-  // The distinction that matters is "we know what this is and cannot read it"
-  // versus "no idea": the partition table supplies the first, and throwing it
-  // away would be discarding something the device already told us.
-  const result = analyzeBinary(data, {
-    partition: /** @type {any} */ ({ subtypeName: 'coredump', label: 'coredump' }),
-  });
-  assert.equal(result.type, 'raw');
-  assert.equal(result.metadata.expectedFormat, 'coredump');
-  assert.equal(result.metadata.contents, 'data');
-  assert.ok(result.issues.some((i) => i.code === 'analyze.notImplemented'));
-
-  // An ELF holding task stacks is structured, not noise. If this ever climbed
-  // near the threshold, a core dump would start being reported as possibly
-  // encrypted — the accusation the entropy work exists to avoid.
-  assert.ok(result.metadata.entropy < 5, `entropy ${result.metadata.entropy}`);
-  assert.ok(!result.issues.some((i) => i.code.startsWith('analyze.possiblyEncrypted')));
+  // Every other data partition here needs the subtype to be identified at all.
+  // This one does not, and that difference is the whole reason it can reach
+  // 1.0: the header names the format and a CRC-32 over the dump agrees.
+  const result = analyzeBinary(data, {});
+  assert.equal(result.type, 'coredump');
+  assert.equal(result.confidence, 1.0);
+  assert.equal(result.metadata.checksumValid, true);
+  assert.ok(!result.issues.some((i) => i.code.startsWith('analyze.')));
 });
 
 test('every subtype we can name but not read has a message to say so with', () => {

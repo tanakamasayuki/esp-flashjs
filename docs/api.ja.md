@@ -131,6 +131,30 @@ new EspFlash(loader)
 
 `parseOtaData(data)` → 有効セクタ、起動スロット、シーケンス番号、issues。定数: `OTADATA_SECTOR_SIZE`。
 
+### コアダンプ
+
+| 名前 | 用途 |
+| --- | --- |
+| `parseCoreDump(data)` | → `CoreDump` |
+| `isCoreDump(data)` | 検出用の軽いヘッダ判定 |
+| `findTaskNameOffset(data, tcbSegments)` | このビルドの TCB 内で `pcTaskName` が置かれる位置。不明なら `null` |
+
+`CoreDump` のメンバ: `totalLength`、`version`、`major`、`minor`、`dataFormat`、
+`versionLabel`、`chipId`、`chipName`、`chipRevision`、`headerSize`、`checksum`、
+`architecture`、`machine`、`tasks`、`crashedTask`、`panicReason`、
+`appElfSha256`、`exceptionRegisters`、`segments`、`notes`、`taskNameOffset`、
+`issues`。
+
+各 `CoreDumpTask` は `tcbAddress`、`name`、`pc`、`stackPointer`、`crashed`、
+`stack`、および名前付きの `registers` を持ちます。`checksum.valid` は `true` /
+`false` / `null` で、`null` は SHA-256 版のダンプ。この版は同期的に検証できない
+ため、どちらかを主張せず「未検証」と言います。
+
+アドレスは記録されたままの値です。シンボルへの解決やコールスタックの復元には
+クラッシュしたビルドの ELF が必要で、それはどのコアダンプにも入っていません。
+
+定数: `COREDUMP_FORMAT`、`COREDUMP_LAYOUTS`、`COREDUMP_MACHINE`、`COREDUMP_NOTE`。
+
 ### NVS
 
 | 名前 | 用途 |
@@ -207,7 +231,7 @@ new EspFlash(loader)
 
 `ctx` は `{ offset?, partition?, flashSize?, flashEncryptionEnabled? }` です。後ろ2つが「推測しない」ための鍵で、パーティションのサブタイプはマジックを持たない形式に名前を与え、チップ自身の暗号化状態の報告が高エントロピーの意味を決めます。
 
-同梱 analyzer（検査や差し替えのためエクスポートしています）: `partitionTableAnalyzer`、`espImageAnalyzer`、`otaDataAnalyzer`、`nvsAnalyzer`、`spiffsAnalyzer`、`littlefsAnalyzer`、`fatAnalyzer`、`rawAnalyzer`。定数: `CONFIDENCE_THRESHOLD`、`HIGH_ENTROPY_THRESHOLD`。
+同梱 analyzer（検査や差し替えのためエクスポートしています）: `partitionTableAnalyzer`、`espImageAnalyzer`、`otaDataAnalyzer`、`nvsAnalyzer`、`spiffsAnalyzer`、`littlefsAnalyzer`、`fatAnalyzer`、`coreDumpAnalyzer`、`rawAnalyzer`。定数: `CONFIDENCE_THRESHOLD`、`HIGH_ENTROPY_THRESHOLD`。
 
 ---
 

@@ -28,6 +28,9 @@
  * @typedef {import('./format/image.js').AppDescription} AppDescription
  * @typedef {import('./format/otadata.js').OtaData} OtaData
  * @typedef {import('./format/otadata.js').OtaSector} OtaSector
+ * @typedef {import('./format/coredump.js').CoreDump} CoreDump
+ * @typedef {import('./format/coredump.js').CoreDumpTask} CoreDumpTask
+ * @typedef {import('./format/coredump.js').CoreDumpSegment} CoreDumpSegment
  * @typedef {import('./format/registry.js').AnalysisResult} AnalysisResult
  * @typedef {import('./format/registry.js').AnalyzeContext} AnalyzeContext
  * @typedef {import('./format/registry.js').BinaryAnalyzer} BinaryAnalyzer
@@ -115,6 +118,17 @@ export {
 
 /* OTA data ---------------------------------------------------------------- */
 export { parseOtaData, OTADATA_SECTOR_SIZE } from './format/otadata.js';
+
+/* Core dumps --------------------------------------------------------------- */
+export {
+  parseCoreDump,
+  isCoreDump,
+  findTaskNameOffset,
+  COREDUMP_FORMAT,
+  COREDUMP_LAYOUTS,
+  COREDUMP_MACHINE,
+  COREDUMP_NOTE,
+} from './format/coredump.js';
 
 /* NVS ---------------------------------------------------------------------- */
 export {
@@ -204,6 +218,7 @@ export {
   spiffsAnalyzer,
   littlefsAnalyzer,
   fatAnalyzer,
+  coreDumpAnalyzer,
   rawAnalyzer,
   CONFIDENCE_THRESHOLD,
   HIGH_ENTROPY_THRESHOLD,
